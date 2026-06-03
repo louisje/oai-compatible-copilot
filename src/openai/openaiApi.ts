@@ -440,6 +440,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 		}
 
 		if (deltaObj?.tool_calls) {
+			logger.debug("[tool-call] received", { modelId: this._modelId, toolCalls: deltaObj.tool_calls });
 			// If there's an active thinking sequence, end it first
 			this.reportEndThinking(progress);
 
@@ -466,8 +467,8 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 				if (func?.name && typeof func.name === "string") {
 					buf.name = func.name as string;
 				}
-				if (typeof func?.arguments === "string") {
-					buf.args += func.arguments as string;
+				if (func && "arguments" in func) {
+					this.mergeToolCallArguments(idx, buf, func.arguments, "append");
 				}
 				this._toolCallBuffers.set(idx, buf);
 

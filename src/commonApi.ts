@@ -114,6 +114,69 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	): AsyncGenerator<{ type: "text"; text: string }>;
 
 	/**
+	 * Convert OpenAI-compatible tool call arguments into the canonical JSON string used by stream buffers.
+	 * Some providers return arguments as an object instead of an escaped JSON string.
+	 * @param rawArguments Raw arguments value from the provider response.
+	 * @returns A JSON string fragment/full object, or an empty string when no arguments were provided.
+	 */
+	protected normalizeToolCallArguments(rawArguments: unknown): string {
+		if (typeof rawArguments === "string") {
+			return rawArguments;
+		}
+		if (rawArguments && typeof rawArguments === "object") {
+			try {
+				return JSON.stringify(rawArguments);
+			} catch (e) {
+				logger.warn("[tool-call] raw arguments stringify failed", {
+					modelId: this._modelId,
+					error: e instanceof Error ? e.message : String(e),
+				});
+			}
+		}
+		return "";
+	}
+
+	/**
+	 * Append raw tool call arguments to a streaming buffer and emit debug logs.
+	 * @param index The tool call index from the stream.
+	 * @param buf The mutable tool call buffer.
+	 * @param rawArguments Raw arguments value from the provider response.
+	 * @param mode Whether to append a delta or replace with a complete arguments payload.
+	 */
+	protected mergeToolCallArguments(
+		index: number,
+		buf: { id?: string; name?: string; args: string },
+		rawArguments: unknown,
+		mode: "append" | "replace" = "append"
+	): void {
+		logger.debug("[tool-call] raw arguments", {
+			modelId: this._modelId,
+			index,
+			name: buf.name ?? "",
+			rawType: rawArguments === null ? "null" : typeof rawArguments,
+			rawArguments,
+		});
+
+		const normalized = this.normalizeToolCallArguments(rawArguments);
+		if (!normalized) {
+			return;
+		}
+
+		if (mode === "replace") {
+			buf.args = normalized;
+		} else {
+			buf.args += normalized;
+		}
+
+		logger.debug("[tool-call] merged arguments", {
+			modelId: this._modelId,
+			index,
+			name: buf.name ?? "",
+			arguments: buf.args,
+		});
+	}
+
+	/**
 	 * Try to emit a buffered tool call when a valid name and JSON arguments are available.
 	 * @param index The tool call index from the stream.
 	 * @param progress Progress reporter for parts.
@@ -131,11 +194,24 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 		}
 		const canParse = tryParseJSONObject(buf.args);
 		if (!canParse.ok) {
+			logger.debug("[tool-call] parse JSON pending", {
+				modelId: this._modelId,
+				index,
+				name: buf.name,
+				arguments: buf.args,
+			});
 			return;
 		}
+		logger.debug("[tool-call] parsed arguments", {
+			modelId: this._modelId,
+			index,
+			name: buf.name,
+			arguments: canParse.value,
+		});
 		const id = buf.id ?? `call_${Math.random().toString(36).slice(2, 10)}`;
 		let parameters = canParse.value;
 		parameters = this.adjustReadFileParameters(buf.name, parameters);
+		logger.debug("[mcp] sending", { modelId: this._modelId, index, id, name: buf.name, input: parameters });
 		progress.report(new LanguageModelToolCallPart(id, buf.name, parameters));
 		this._toolCallBuffers.delete(index);
 		this._completedToolCallIndices.add(index);
@@ -156,6 +232,12 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 		for (const [idx, buf] of Array.from(this._toolCallBuffers.entries())) {
 			// [FIX] Normalize empty args to "{}" for parameterless tool calls
 			const argsText = buf.args.trim() || "{}";
+			logger.debug("[tool-call] merged arguments", {
+				modelId: this._modelId,
+				index: idx,
+				name: buf.name ?? "unknown_tool",
+				arguments: argsText,
+			});
 			const parsed = tryParseJSONObject(argsText);
 			if (!parsed.ok) {
 				if (throwOnInvalid) {
@@ -170,8 +252,15 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 			}
 			const id = buf.id ?? `call_${Math.random().toString(36).slice(2, 10)}`;
 			const name = buf.name ?? "unknown_tool";
+			logger.debug("[tool-call] parsed arguments", {
+				modelId: this._modelId,
+				index: idx,
+				name,
+				arguments: parsed.value,
+			});
 			let parameters = parsed.value;
 			parameters = this.adjustReadFileParameters(name, parameters);
+			logger.debug("[mcp] sending", { modelId: this._modelId, index: idx, id, name, input: parameters });
 			progress.report(new LanguageModelToolCallPart(id, name, parameters));
 			this._toolCallBuffers.delete(idx);
 			this._completedToolCallIndices.add(idx);
