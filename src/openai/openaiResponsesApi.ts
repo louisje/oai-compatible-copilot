@@ -497,7 +497,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			// Tool call events
 			case "response.function_call_arguments.delta":
 			case "response.function_call_arguments.done": {
-				logger.debug("[tool-call] received", { modelId: this._modelId, event });
+				logger.debug("[tool-call][raw]", { modelId: this._modelId, event });
 				this.reportEndThinking(progress);
 
 				// SSEProcessor-like: if first tool call appears after text, emit a whitespace
@@ -542,7 +542,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 			case "response.output_item.added":
 			case "response.output_item.done": {
-				logger.debug("[tool-call] received", { modelId: this._modelId, event });
+				logger.debug("[tool-call][raw]", { modelId: this._modelId, event });
 				const item = event.item && typeof event.item === "object" ? (event.item as Record<string, unknown>) : null;
 				if (!item || item.type !== "function_call") {
 					return;

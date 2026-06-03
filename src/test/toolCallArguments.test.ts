@@ -108,4 +108,72 @@ suite("toolCallArguments", () => {
 		assert.strictEqual(toolCalls[0].name, "read_file");
 		assert.deepStrictEqual(toolCalls[0].input, { path: "/tmp/test.txt" });
 	});
+	test("defers emit when an early placeholder object is followed by real arguments", async () => {
+		const toolCalls = await collectToolCalls([
+			{
+				choices: [
+					{
+						delta: {
+							tool_calls: [
+								{
+									index: 0,
+									id: "call_read_file",
+									function: { name: "read_file", arguments: "{}" },
+								},
+							],
+						},
+					},
+				],
+			},
+			{
+				choices: [
+					{
+						delta: {
+							tool_calls: [
+								{
+									index: 0,
+									function: { arguments: '{"path":"/tmp/test.txt"}' },
+								},
+							],
+						},
+					},
+				],
+			},
+			{
+				choices: [
+					{
+						delta: {},
+						finish_reason: "tool_calls",
+					},
+				],
+			},
+		]);
+
+		assert.strictEqual(toolCalls.length, 1);
+		assert.strictEqual(toolCalls[0].name, "read_file");
+		assert.deepStrictEqual(toolCalls[0].input, { path: "/tmp/test.txt" });
+	});
+
+	test("does not emit buffered tool calls on stop finish reason", async () => {
+		const toolCalls = await collectToolCalls([
+			{
+				choices: [
+					{
+						delta: {
+							tool_calls: [
+								{
+									index: 0,
+									id: "call_read_file",
+									function: { name: "read_file", arguments: "{}" },
+								},
+							],
+						},
+						finish_reason: "stop",
+					},
+				],
+			},
+		]);
+
+		assert.strictEqual(toolCalls.length, 0);
+	});
 });

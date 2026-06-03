@@ -149,7 +149,7 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 		rawArguments: unknown,
 		mode: "append" | "replace" = "append"
 	): void {
-		logger.debug("[tool-call] raw arguments", {
+		logger.debug("[tool-call][raw-arguments]", {
 			modelId: this._modelId,
 			index,
 			name: buf.name ?? "",
@@ -159,20 +159,37 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 
 		const normalized = this.normalizeToolCallArguments(rawArguments);
 		if (!normalized) {
+			this.logToolCallBuffer(index, buf);
 			return;
 		}
 
 		if (mode === "replace") {
 			buf.args = normalized;
 		} else {
-			buf.args += normalized;
+			const currentArgs = buf.args.trim();
+			const nextArgs = normalized.trim();
+			if (currentArgs === "{}" && nextArgs !== "{}" && nextArgs.startsWith("{")) {
+				buf.args = normalized;
+			} else {
+				buf.args += normalized;
+			}
 		}
 
-		logger.debug("[tool-call] merged arguments", {
+		this.logToolCallBuffer(index, buf);
+	}
+
+	/**
+	 * Log the current streaming buffer for one tool call.
+	 * @param index The tool call index from the stream.
+	 * @param buf The current tool call buffer.
+	 */
+	protected logToolCallBuffer(index: number, buf: { id?: string; name?: string; args: string }): void {
+		logger.debug("[tool-call][buffer]", {
 			modelId: this._modelId,
 			index,
+			id: buf.id ?? "",
 			name: buf.name ?? "",
-			arguments: buf.args,
+			args: buf.args,
 		});
 	}
 
@@ -183,35 +200,72 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	 */
 	protected async tryEmitBufferedToolCall(
 		index: number,
-		progress: Progress<LanguageModelResponsePart2>
+		progress: Progress<LanguageModelResponsePart2>,
+		allowEmit = false
 	): Promise<void> {
 		const buf = this._toolCallBuffers.get(index);
 		if (!buf) {
 			return;
 		}
 		if (!buf.name) {
-			return;
-		}
-		const canParse = tryParseJSONObject(buf.args);
-		if (!canParse.ok) {
-			logger.debug("[tool-call] parse JSON pending", {
+			logger.debug("[tool-call][emit]", {
 				modelId: this._modelId,
 				index,
-				name: buf.name,
-				arguments: buf.args,
+				status: "pending-name",
+				name: "",
+				args: buf.args,
 			});
 			return;
 		}
-		logger.debug("[tool-call] parsed arguments", {
-			modelId: this._modelId,
-			index,
-			name: buf.name,
-			arguments: canParse.value,
-		});
+		const argsText = buf.args.trim() || "{}";
+		const canParse = tryParseJSONObject(argsText);
+		if (!canParse.ok) {
+			logger.debug("[tool-call][emit]", {
+				modelId: this._modelId,
+				index,
+				status: "pending-json",
+				name: buf.name,
+				args: argsText,
+			});
+			return;
+		}
+		if (!allowEmit) {
+			logger.debug("[tool-call][emit]", {
+				modelId: this._modelId,
+				index,
+				status: "deferred-until-flush",
+				name: buf.name,
+				args: argsText,
+			});
+			return;
+		}
+
 		const id = buf.id ?? `call_${Math.random().toString(36).slice(2, 10)}`;
 		let parameters = canParse.value;
 		parameters = this.adjustReadFileParameters(buf.name, parameters);
-		logger.debug("[mcp] sending", { modelId: this._modelId, index, id, name: buf.name, input: parameters });
+		logger.debug("[tool-call][emit]", {
+			modelId: this._modelId,
+			index,
+			status: "emitting",
+			id,
+			name: buf.name,
+			args: argsText,
+			parameters,
+		});
+		logger.debug("[tool-call][progress-report]", {
+			modelId: this._modelId,
+			payload: {
+				type: "LanguageModelToolCallPart",
+				callId: id,
+				name: buf.name,
+				input: parameters,
+			},
+		});
+		logger.debug("[mcp][request]", {
+			modelId: this._modelId,
+			tool: buf.name,
+			arguments: parameters,
+		});
 		progress.report(new LanguageModelToolCallPart(id, buf.name, parameters));
 		this._toolCallBuffers.delete(index);
 		this._completedToolCallIndices.add(index);
@@ -230,13 +284,13 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 			return;
 		}
 		for (const [idx, buf] of Array.from(this._toolCallBuffers.entries())) {
-			// [FIX] Normalize empty args to "{}" for parameterless tool calls
 			const argsText = buf.args.trim() || "{}";
-			logger.debug("[tool-call] merged arguments", {
+			logger.debug("[tool-call][flush]", {
 				modelId: this._modelId,
 				index: idx,
+				id: buf.id ?? "",
 				name: buf.name ?? "unknown_tool",
-				arguments: argsText,
+				args: argsText,
 			});
 			const parsed = tryParseJSONObject(argsText);
 			if (!parsed.ok) {
@@ -247,23 +301,9 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 					});
 					throw new Error("Invalid JSON for tool call");
 				}
-				// When not throwing (e.g. on [DONE]), drop silently to reduce noise
 				continue;
 			}
-			const id = buf.id ?? `call_${Math.random().toString(36).slice(2, 10)}`;
-			const name = buf.name ?? "unknown_tool";
-			logger.debug("[tool-call] parsed arguments", {
-				modelId: this._modelId,
-				index: idx,
-				name,
-				arguments: parsed.value,
-			});
-			let parameters = parsed.value;
-			parameters = this.adjustReadFileParameters(name, parameters);
-			logger.debug("[mcp] sending", { modelId: this._modelId, index: idx, id, name, input: parameters });
-			progress.report(new LanguageModelToolCallPart(id, name, parameters));
-			this._toolCallBuffers.delete(idx);
-			this._completedToolCallIndices.add(idx);
+			await this.tryEmitBufferedToolCall(idx, progress, true);
 		}
 	}
 
