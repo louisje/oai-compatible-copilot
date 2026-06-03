@@ -497,6 +497,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			// Tool call events
 			case "response.function_call_arguments.delta":
 			case "response.function_call_arguments.done": {
+				logger.debug("[tool-call] received", { modelId: this._modelId, event });
 				this.reportEndThinking(progress);
 
 				// SSEProcessor-like: if first tool call appears after text, emit a whitespace
@@ -513,14 +514,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 				const callId = this.getCallIdFromEvent(event);
 				const name = typeof event.name === "string" ? event.name : "";
-				const chunk =
-					eventType === "response.function_call_arguments.delta"
-						? typeof event.delta === "string"
-							? event.delta
-							: ""
-						: typeof event.arguments === "string"
-							? event.arguments
-							: "";
+				const rawArguments = eventType === "response.function_call_arguments.delta" ? event.delta : event.arguments;
 
 				const buf = this._toolCallBuffers.get(idx) ?? { args: "" };
 				if (!buf.id && callId) {
@@ -530,12 +524,13 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 					buf.name = name;
 				}
 
-				if (eventType === "response.function_call_arguments.delta") {
-					if (chunk) buf.args += chunk;
-				} else {
-					// "done" events typically provide the full argument string.
-					buf.args = chunk;
-				}
+				// "done" events typically provide the full argument payload.
+				this.mergeToolCallArguments(
+					idx,
+					buf,
+					rawArguments,
+					eventType === "response.function_call_arguments.delta" ? "append" : "replace"
+				);
 				this._toolCallBuffers.set(idx, buf);
 
 				await this.tryEmitBufferedToolCall(idx, progress);
@@ -547,6 +542,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 			case "response.output_item.added":
 			case "response.output_item.done": {
+				logger.debug("[tool-call] received", { modelId: this._modelId, event });
 				const item = event.item && typeof event.item === "object" ? (event.item as Record<string, unknown>) : null;
 				if (!item || item.type !== "function_call") {
 					return;
@@ -576,13 +572,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 							? String((item.function as Record<string, unknown>).name)
 							: "";
 				const args =
-					typeof item.arguments === "string"
+					"arguments" in item
 						? item.arguments
-						: item.function &&
-							  typeof item.function === "object" &&
-							  typeof (item.function as Record<string, unknown>).arguments === "string"
-							? String((item.function as Record<string, unknown>).arguments)
-							: "";
+						: item.function && typeof item.function === "object"
+							? (item.function as Record<string, unknown>).arguments
+							: undefined;
 
 				const buf = this._toolCallBuffers.get(idx) ?? { args: "" };
 				if (!buf.id && callId) {
@@ -591,9 +585,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				if (!buf.name && name) {
 					buf.name = name;
 				}
-				if (args) {
-					buf.args = args;
-				}
+				this.mergeToolCallArguments(idx, buf, args, "replace");
 				this._toolCallBuffers.set(idx, buf);
 
 				await this.tryEmitBufferedToolCall(idx, progress);
