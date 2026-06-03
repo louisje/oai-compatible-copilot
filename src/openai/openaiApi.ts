@@ -307,8 +307,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 					const data = line.slice(5).trim();
 					logger.debug("openai.stream.chunk", { modelId, data });
 					if (data === "[DONE]") {
-						// Do not throw on [DONE]; any incomplete/empty buffers are ignored.
-						await this.flushToolCallBuffers(progress, /*throwOnInvalid*/ false);
+						// Tool calls are emitted only from a finish_reason="tool_calls" chunk.
 						continue;
 					}
 
@@ -440,7 +439,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 		}
 
 		if (deltaObj?.tool_calls) {
-			logger.debug("[tool-call] received", { modelId: this._modelId, toolCalls: deltaObj.tool_calls });
+			logger.debug("[tool-call][raw]", { modelId: this._modelId, deltaToolCalls: deltaObj.tool_calls });
 			// If there's an active thinking sequence, end it first
 			this.reportEndThinking(progress);
 
@@ -472,14 +471,13 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 				}
 				this._toolCallBuffers.set(idx, buf);
 
-				// Emit immediately once arguments become valid JSON to avoid perceived hanging
+				// Trace parseability during streaming, but defer emission until finish_reason="tool_calls".
 				await this.tryEmitBufferedToolCall(idx, progress);
 			}
 		}
 
 		const finish = (choice.finish_reason as string | undefined) ?? undefined;
-		if (finish === "tool_calls" || finish === "stop") {
-			// On both 'tool_calls' and 'stop', emit any buffered calls and throw on invalid JSON
+		if (finish === "tool_calls") {
 			await this.flushToolCallBuffers(progress, /*throwOnInvalid*/ true);
 		}
 		return emitted;
