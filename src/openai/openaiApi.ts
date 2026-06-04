@@ -307,7 +307,8 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 					const data = line.slice(5).trim();
 					logger.debug("openai.stream.chunk", { modelId, data });
 					if (data === "[DONE]") {
-						// Tool calls are emitted only from a finish_reason="tool_calls" chunk.
+						// Flush buffered tool calls on [DONE] for providers that never send finish_reason="tool_calls".
+						await this.flushToolCallBuffers(progress, false);
 						continue;
 					}
 
@@ -336,6 +337,10 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 			throw e;
 		} finally {
 			reader.releaseLock();
+			// Flush any remaining tool call buffers that were never triggered by finish_reason="tool_calls".
+			// Some providers (e.g. AWS Bedrock) send finish_reason="stop" for every chunk,
+			// so the normal flush path is never reached.
+			await this.flushToolCallBuffers(progress, false);
 			// If there's an active thinking sequence, end it first
 			this.reportEndThinking(progress);
 			// Report accumulated usage for the Context Window widget
