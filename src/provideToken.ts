@@ -18,7 +18,7 @@ export async function countMessageTokens(
 	modelConfig: { includeReasoningInRequest: boolean }
 ): Promise<number> {
 	if (typeof text === "string") {
-		return textTokenLength(text);
+		return await textTokenLength(text);
 	} else {
 		// For complex messages, calculate tokens for each part separately
 		let totalTokens = BaseTokensPerMessage + BaseTokensPerName;
@@ -60,7 +60,7 @@ export async function countMessageTokens(
 
 export async function textTokenLength(text: string): Promise<number> {
 	try {
-		return tokenizerManager.countTokens(text);
+		return await tokenizerManager.countTokens(text);
 	} catch (e) {
 		return 0;
 	}

@@ -70,11 +70,23 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 	 * @returns A promise that resolves to the number of tokens
 	 */
 	async provideTokenCount(
-		_model: LanguageModelChatInformation,
+		model: LanguageModelChatInformation,
 		text: string | LanguageModelChatRequestMessage,
 		_token: CancellationToken
 	): Promise<number> {
-		return countMessageTokens(text, { includeReasoningInRequest: true });
+		// Resolve model-specific configuration for accurate token counting
+		const config = vscode.workspace.getConfiguration();
+		const userModels = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const parsedModelId = parseModelId(model.id);
+		const um = userModels.find(
+			(m) =>
+				m.id === parsedModelId.baseId &&
+				((parsedModelId.configId && m.configId === parsedModelId.configId) ||
+					(!parsedModelId.configId && !m.configId))
+		) ?? userModels.find((m) => m.id === parsedModelId.baseId);
+
+		const includeReasoningInRequest = um?.include_reasoning_in_request ?? false;
+		return countMessageTokens(text, { includeReasoningInRequest });
 	}
 
 	/**
