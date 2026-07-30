@@ -669,7 +669,8 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		signal?: AbortSignal
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// Convert to Responses API format
 		const input: ResponsesInputItem[] = [];
@@ -716,6 +717,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),
+			signal,
 		});
 
 		if (!response.ok) {

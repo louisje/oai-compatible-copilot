@@ -224,7 +224,14 @@ async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff
 		}
 
 		commitGenerationAbortController = new AbortController();
-		const stream = apiInstance.createMessage(selectedModel, systemPrompt, messages, baseUrl, apiKey);
+		const stream = apiInstance.createMessage(
+			selectedModel,
+			systemPrompt,
+			messages,
+			baseUrl,
+			apiKey,
+			commitGenerationAbortController.signal
+		);
 
 		let response = "";
 		for await (const chunk of stream) {

@@ -25,6 +25,27 @@ const networkErrorPatterns = [
 	"NetworkError",
 ];
 
+/**
+ * Bridge a VS Code CancellationToken to a standard AbortSignal so it can be
+ * passed directly to `fetch()`. This lets Copilot Chat's stop/cancel action
+ * actually abort the underlying HTTP request instead of just stopping local
+ * processing of an already-open stream.
+ * @param token The cancellation token to bridge.
+ * @returns An AbortSignal that aborts when the token is cancelled.
+ */
+export function toAbortSignal(token: vscode.CancellationToken): AbortSignal {
+	const controller = new AbortController();
+	if (token.isCancellationRequested) {
+		controller.abort();
+	} else {
+		const subscription = token.onCancellationRequested(() => {
+			controller.abort();
+			subscription.dispose();
+		});
+	}
+	return controller.signal;
+}
+
 // Model ID parsing helper
 export interface ParsedModelId {
 	baseId: string;

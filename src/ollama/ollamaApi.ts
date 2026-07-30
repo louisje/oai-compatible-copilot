@@ -283,7 +283,8 @@ export class OllamaApi extends CommonApi<OllamaMessage, OllamaRequestBody> {
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		signal?: AbortSignal
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// Convert to Ollama message format
 		const ollamaMessages: OllamaMessage[] = [];
@@ -317,6 +318,7 @@ export class OllamaApi extends CommonApi<OllamaMessage, OllamaRequestBody> {
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),
+			signal,
 		});
 
 		if (!response.ok) {

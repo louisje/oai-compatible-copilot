@@ -13,7 +13,7 @@ import type { HFModelItem } from "./types";
 
 import type { OllamaRequestBody } from "./ollama/ollamaTypes";
 
-import { parseModelId, createRetryConfig, executeWithRetry, normalizeUserModels } from "./utils";
+import { parseModelId, createRetryConfig, executeWithRetry, normalizeUserModels, toAbortSignal } from "./utils";
 
 import { prepareLanguageModelChatInformation } from "./provideModel";
 import { countMessageTokens } from "./provideToken";
@@ -236,6 +236,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 						method: "POST",
 						headers: requestHeaders,
 						body: JSON.stringify(ollamaRequestBody),
+						signal: toAbortSignal(token),
 					});
 
 					if (!res.ok) {
@@ -279,6 +280,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 						method: "POST",
 						headers: requestHeaders,
 						body: JSON.stringify(requestBody),
+						signal: toAbortSignal(token),
 					});
 
 					if (!res.ok) {
@@ -356,6 +358,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 							method: "POST",
 							headers: requestHeaders,
 							body: JSON.stringify(body),
+							signal: toAbortSignal(token),
 						});
 
 						if (!res.ok) {
@@ -450,6 +453,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 						method: "POST",
 						headers: requestHeaders,
 						body: JSON.stringify(requestBody),
+						signal: toAbortSignal(token),
 					});
 
 					if (!res.ok) {
@@ -489,6 +493,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 						method: "POST",
 						headers: requestHeaders,
 						body: JSON.stringify(requestBody),
+						signal: toAbortSignal(token),
 					});
 
 					if (!res.ok) {

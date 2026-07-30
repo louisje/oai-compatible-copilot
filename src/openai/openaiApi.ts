@@ -493,7 +493,8 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		signal?: AbortSignal
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// Combine system prompt with first user message or as separate system message
 		const openaiMessages = [...messages];
@@ -517,6 +518,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),
+			signal,
 		});
 
 		if (!response.ok) {
