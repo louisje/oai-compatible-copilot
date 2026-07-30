@@ -20,12 +20,18 @@ class Logger {
 	private _level: LogLevel = "off";
 	private _logDir = "";
 	private _initialized = false;
+	private _outputChannel: vscode.OutputChannel | undefined;
 
 	/**
 	 * Initialize the logger: read config, ensure log directory exists.
+	 * Optionally register an extension context so the output channel gets disposed on deactivate.
 	 */
-	init(): void {
+	init(context?: vscode.ExtensionContext): void {
 		this._logDir = path.join(os.homedir(), ".copilot", "oaicopilot", "logs");
+		this._outputChannel = vscode.window.createOutputChannel("OAI Compatible Provider");
+		if (context) {
+			context.subscriptions.push(this._outputChannel);
+		}
 		this.reloadConfig();
 		this.ensureLogDir();
 		this._initialized = true;
@@ -135,6 +141,10 @@ class Logger {
 		const line = JSON.stringify(logEntry) + "\n";
 		const filePath = this.getLogFilePath();
 
+		this._outputChannel?.appendLine(
+			`[${logEntry.ts}] [${level.toUpperCase()}] [${tag}] ${JSON.stringify(sanitizedData)}`
+		);
+
 		try {
 			fs.appendFileSync(filePath, line, "utf8");
 			this.cleanOldLogs();
@@ -173,6 +183,13 @@ class Logger {
 		} catch (e) {
 			console.error("[OAICopilot Logger] Failed to clean old logs:", e);
 		}
+	}
+
+	/**
+	 * Reveal the output channel in the VS Code UI.
+	 */
+	show(): void {
+		this._outputChannel?.show();
 	}
 }
 

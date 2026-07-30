@@ -82,6 +82,11 @@
 				"title": "Generate Commit Message with OAICopilot - Stop",
 				"category": "OAICopilot",
 				"icon": "$(debug-stop)"
+			},
+			{
+				"command": "oaicopilot.showLogs",
+				"category": "OAICopilot",
+				"title": "Show Logs"
 			}
 		],
 		"menus": {

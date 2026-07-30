@@ -10,7 +10,7 @@ import { TokenizerManager } from "./tokenizer/tokenizerManager";
 
 export function activate(context: vscode.ExtensionContext) {
 	// Initialize logger
-	logger.init();
+	logger.init(context);
 
 	// Initialize TokenizerManager with extension path
 	TokenizerManager.initialize(context.extensionPath);
@@ -123,6 +123,13 @@ export function activate(context: vscode.ExtensionContext) {
 			if (e.affectsConfiguration("oaicopilot.logLevel")) {
 				logger.reloadConfig();
 			}
+		})
+	);
+
+	// Command to reveal the extension's Output channel
+	context.subscriptions.push(
+		vscode.commands.registerCommand("oaicopilot.showLogs", () => {
+			logger.show();
 		})
 	);
 }
