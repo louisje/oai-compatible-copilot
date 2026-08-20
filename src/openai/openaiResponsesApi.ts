@@ -18,6 +18,7 @@ import {
 	collectToolResultText,
 	convertToolsToOpenAIResponses,
 	mapRole,
+	throwIfStreamErrorPayload,
 } from "../utils";
 
 import { CommonApi } from "../commonApi";
@@ -336,8 +337,12 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 					try {
 						const parsed = JSON.parse(data) as Record<string, unknown>;
+						throwIfStreamErrorPayload(parsed, "OpenAI Responses");
 						await this.processEvent(parsed, progress);
 					} catch (e) {
+						if (e instanceof Error && e.message.startsWith("OpenAI Responses stream error")) {
+							throw e;
+						}
 						console.error("[OpenAI-Responses Provider] Failed to parse SSE chunk:", e, "data:", data);
 						logger.error("responses.stream.chunk.error", {
 							modelId,

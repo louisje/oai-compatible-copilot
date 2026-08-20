@@ -25,6 +25,68 @@ const networkErrorPatterns = [
 	"NetworkError",
 ];
 
+const UNSUPPORTED_FUNCTION_SCHEMA_KEYS = new Set([
+	"$schema",
+	"$id",
+	"$defs",
+	"definitions",
+	"additionalItems",
+	"unevaluatedItems",
+	"unevaluatedProperties",
+	"dependentRequired",
+	"dependentSchemas",
+	"patternProperties",
+	"propertyNames",
+	"prefixItems",
+	"contains",
+	"minContains",
+	"maxContains",
+	"if",
+	"then",
+	"else",
+	"not",
+	"allOf",
+	"anyOf",
+	"oneOf",
+]);
+
+function cloneAndNormalizeFunctionSchema(value: unknown): Record<string, unknown> {
+	const normalized = normalizeJsonSchema(value);
+	if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+		return { type: "object", properties: {} };
+	}
+	const schema = normalized as Record<string, unknown>;
+	if (typeof schema.type !== "string") {
+		schema.type = "object";
+	}
+	if (schema.type === "object" && (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties))) {
+		schema.properties = {};
+	}
+	return schema;
+}
+
+function normalizeJsonSchema(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeJsonSchema(item));
+	}
+	if (!value || typeof value !== "object") {
+		return value;
+	}
+
+	const source = value as Record<string, unknown>;
+	const out: Record<string, unknown> = {};
+	for (const [key, raw] of Object.entries(source)) {
+		if (UNSUPPORTED_FUNCTION_SCHEMA_KEYS.has(key)) {
+			continue;
+		}
+		if (key === "additionalProperties" && typeof raw !== "boolean" && (typeof raw !== "object" || raw === null)) {
+			continue;
+		}
+		out[key] = normalizeJsonSchema(raw);
+	}
+	return out;
+}
+
 /**
  * Bridge a VS Code CancellationToken to a standard AbortSignal so it can be
  * passed directly to `fetch()`. This lets Copilot Chat's stop/cancel action
@@ -133,7 +195,7 @@ export function convertToolsToOpenAI(options?: vscode.ProvideLanguageModelChatRe
 		.map((t) => {
 			const name = t.name;
 			const description = typeof t.description === "string" ? t.description : "";
-			const params = t.inputSchema ?? { type: "object", properties: {} };
+			const params = cloneAndNormalizeFunctionSchema(t.inputSchema);
 			return {
 				type: "function" as const,
 				function: {
@@ -273,6 +335,39 @@ export function tryParseJSONObject(text: string): { ok: true; value: Record<stri
 	} catch {
 		return { ok: false };
 	}
+}
+
+export function throwIfStreamErrorPayload(payload: Record<string, unknown>, providerName: string): void {
+	const errorValue = payload.error;
+	if (!errorValue) {
+		return;
+	}
+
+	let message = "Unknown streaming error";
+	if (typeof errorValue === "string") {
+		message = errorValue;
+	} else if (errorValue && typeof errorValue === "object") {
+		const errorObj = errorValue as Record<string, unknown>;
+		if (typeof errorObj.message === "string" && errorObj.message.trim()) {
+			message = errorObj.message;
+		} else {
+			try {
+				message = JSON.stringify(errorObj);
+			} catch {
+				message = String(errorValue);
+			}
+		}
+	}
+
+	let code = "";
+	if (errorValue && typeof errorValue === "object") {
+		const rawCode = (errorValue as Record<string, unknown>).code;
+		if (typeof rawCode === "string" && rawCode.trim()) {
+			code = ` (${rawCode})`;
+		}
+	}
+
+	throw new Error(`${providerName} stream error${code}: ${message}`);
 }
 
 /**

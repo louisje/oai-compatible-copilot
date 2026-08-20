@@ -19,6 +19,7 @@ import {
 	collectToolResultText,
 	convertToolsToOpenAI,
 	mapRole,
+	throwIfStreamErrorPayload,
 	tryParseJSONObject,
 } from "../utils";
 
@@ -808,8 +809,13 @@ export class GeminiApi extends CommonApi<GeminiChatMessage, GeminiGenerateConten
 
 					let payload: GeminiGenerateContentResponse | null = null;
 					try {
-						payload = JSON.parse(data) as GeminiGenerateContentResponse;
+						const parsed = JSON.parse(data) as Record<string, unknown>;
+						throwIfStreamErrorPayload(parsed, "Gemini");
+						payload = parsed as unknown as GeminiGenerateContentResponse;
 					} catch (e) {
+						if (e instanceof Error && e.message.startsWith("Gemini stream error")) {
+							throw e;
+						}
 						console.error("[Gemini Provider] Failed to parse streaming chunk:", e, "data:", data);
 						logger.error("gemini.stream.chunk.error", {
 							modelId,

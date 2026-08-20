@@ -20,7 +20,14 @@ import type {
 	AnthropicStreamChunk,
 } from "./anthropicTypes";
 
-import { isImageMimeType, isToolResultPart, collectToolResultText, convertToolsToOpenAI, mapRole } from "../utils";
+import {
+	isImageMimeType,
+	isToolResultPart,
+	collectToolResultText,
+	convertToolsToOpenAI,
+	mapRole,
+	throwIfStreamErrorPayload,
+} from "../utils";
 
 import { CommonApi } from "../commonApi";
 import { logger } from "../logger";
@@ -455,9 +462,14 @@ export class AnthropicApi extends CommonApi<AnthropicMessage, AnthropicRequestBo
 					}
 
 					try {
-						const chunk: AnthropicStreamChunk = JSON.parse(data);
+						const parsed = JSON.parse(data) as Record<string, unknown>;
+						throwIfStreamErrorPayload(parsed, "Anthropic");
+						const chunk = parsed as unknown as AnthropicStreamChunk;
 						await this.processAnthropicChunk(chunk, progress);
 					} catch (e) {
+						if (e instanceof Error && e.message.startsWith("Anthropic stream error")) {
+							throw e;
+						}
 						console.error("[Anthropic Provider] Failed to parse SSE chunk:", e, "data:", data);
 						logger.error("anthropic.stream.chunk.error", {
 							modelId,

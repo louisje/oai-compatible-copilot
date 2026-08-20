@@ -26,6 +26,7 @@ import {
 	collectToolResultText,
 	convertToolsToOpenAI,
 	mapRole,
+	throwIfStreamErrorPayload,
 } from "../utils";
 
 import { CommonApi } from "../commonApi";
@@ -314,6 +315,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 
 					try {
 						const parsed = JSON.parse(data);
+						throwIfStreamErrorPayload(parsed, "OpenAI");
 						// Capture usage from the final chunk (stream_options.include_usage)
 						if (parsed.usage && typeof parsed.usage === "object") {
 							this._usage = parsed.usage as TokenUsage;
@@ -321,6 +323,9 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 						}
 						await this.processDelta(parsed, progress);
 					} catch (e) {
+						if (e instanceof Error && e.message.startsWith("OpenAI stream error")) {
+							throw e;
+						}
 						console.error("[OpenAI Provider] Failed to parse SSE chunk:", e, "data:", data);
 						logger.error("openai.stream.chunk.error", {
 							modelId,
