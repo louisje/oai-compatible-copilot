@@ -91,6 +91,10 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 
 				if (joinedText) {
 					assistantMessage.content = joinedText;
+				} else if (toolCalls.length > 0) {
+					// Some OAI-compatible backends require `content` to be present
+					// even when the assistant message only contains tool_calls.
+					assistantMessage.content = "";
 				}
 
 				if (modelConfig.includeReasoningInRequest) {
