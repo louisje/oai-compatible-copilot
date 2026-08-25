@@ -356,7 +356,7 @@ function renderProviders() {
 
 			return `
 			<tr data-provider="${provider}">
-				<td>${provider}</td>
+				<td><input type="text" class="provider-input" data-field="provider" data-original-provider="${provider}" value="${provider}" placeholder="Provider ID" /></td>
 				<td><input type="text" class="provider-input" data-field="baseUrl" value="${firstModel.baseUrl || ""}" placeholder="Base URL" /></td>
 				<td><input type="password" class="provider-input" data-field="apiKey" value="${state.providerKeys[provider] || ""}" placeholder="API Key" /></td>
 				<td>
@@ -403,7 +403,7 @@ function renderProviders() {
 	// Add event listeners for provider rows
 	document.querySelectorAll(".update-provider-btn").forEach((btn) => {
 		btn.addEventListener("click", (event) => {
-			const provider = event.target.getAttribute("data-provider");
+			const originalProvider = event.target.getAttribute("data-provider");
 			const row = event.target.closest("tr");
 			const inputs = row.querySelectorAll(".provider-input");
 			const providerData = {};
@@ -411,6 +411,12 @@ function renderProviders() {
 				const field = input.getAttribute("data-field");
 				providerData[field] = input.value;
 			});
+
+			const newProvider = (providerData.provider || "").trim();
+			if (!newProvider) {
+				alert("Provider ID is required.");
+				return;
+			}
 
 			let headers = undefined;
 			if (providerData.headers && providerData.headers.trim()) {
@@ -423,7 +429,8 @@ function renderProviders() {
 
 			vscode.postMessage({
 				type: "updateProvider",
-				provider: provider,
+				provider: newProvider,
+				originalProvider: originalProvider,
 				baseUrl: providerData.baseUrl || undefined,
 				apiKey: providerData.apiKey || undefined,
 				apiMode: providerData.apiMode || undefined,

@@ -70,6 +70,7 @@ type IncomingMessage =
 	| {
 			type: "updateProvider";
 			provider: string;
+			originalProvider?: string;
 			baseUrl?: string;
 			apiKey?: string;
 			apiMode?: string;
@@ -194,7 +195,14 @@ export class ConfigViewPanel {
 				await this.addProvider(message.provider, message.baseUrl, message.apiKey, message.apiMode, message.headers);
 				break;
 			case "updateProvider":
-				await this.updateProvider(message.provider, message.baseUrl, message.apiKey, message.apiMode, message.headers);
+				await this.updateProvider(
+					message.provider,
+					message.originalProvider,
+					message.baseUrl,
+					message.apiKey,
+					message.apiMode,
+					message.headers
+				);
 				break;
 			case "deleteProvider":
 				await this.deleteProvider(message.provider);
@@ -415,6 +423,7 @@ export class ConfigViewPanel {
 
 	private async updateProvider(
 		provider: string,
+		originalProvider?: string,
 		baseUrl?: string,
 		apiKey?: string,
 		apiMode?: string,
@@ -425,9 +434,37 @@ export class ConfigViewPanel {
 			vscode.window.showErrorMessage("Provider ID is required.");
 			return;
 		}
+		const trimmedOriginalProvider = (originalProvider ?? trimmedProvider).trim() || trimmedProvider;
+		const isRenaming = trimmedOriginalProvider !== trimmedProvider;
 		const normalizedProvider = trimmedProvider.toLowerCase();
-		// Update provider API key
-		if (apiKey) {
+		const normalizedOriginalProvider = trimmedOriginalProvider.toLowerCase();
+
+		const config = vscode.workspace.getConfiguration();
+		const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+
+		if (isRenaming) {
+			// Prevent collisions with an already existing provider.
+			const conflict = models.some((model) => model.owned_by === trimmedProvider);
+			if (conflict) {
+				vscode.window.showErrorMessage(`Provider ${trimmedProvider} already exists.`);
+				return;
+			}
+		}
+
+		// Update provider API key. When renaming, migrate the secret to the new key first.
+		if (isRenaming) {
+			const existingKey =
+				(await this.secrets.get(`oaicopilot.apiKey.${normalizedOriginalProvider}`)) ??
+				(await this.secrets.get(`oaicopilot.apiKey.${trimmedOriginalProvider}`));
+			await this.secrets.delete(`oaicopilot.apiKey.${normalizedOriginalProvider}`);
+			if (trimmedOriginalProvider !== normalizedOriginalProvider) {
+				await this.secrets.delete(`oaicopilot.apiKey.${trimmedOriginalProvider}`);
+			}
+			const keyToStore = apiKey || existingKey;
+			if (keyToStore) {
+				await this.secrets.store(`oaicopilot.apiKey.${normalizedProvider}`, keyToStore);
+			}
+		} else if (apiKey) {
 			await this.secrets.store(`oaicopilot.apiKey.${normalizedProvider}`, apiKey);
 			if (trimmedProvider !== normalizedProvider) {
 				await this.secrets.delete(`oaicopilot.apiKey.${trimmedProvider}`);
@@ -440,14 +477,12 @@ export class ConfigViewPanel {
 		}
 
 		// Update the provider's configuration in the model list
-		const config = vscode.workspace.getConfiguration();
-		const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
-
 		const updatedModels = models.map((model) => {
-			if (model.owned_by === trimmedProvider) {
+			if (model.owned_by === trimmedOriginalProvider) {
 				const { headers: _, ...rest } = model;
 				return {
 					...rest,
+					owned_by: trimmedProvider,
 					baseUrl: baseUrl || model.baseUrl,
 					apiMode: (apiMode as HFApiMode) || model.apiMode,
 					...(headers !== undefined && { headers }),
@@ -457,7 +492,11 @@ export class ConfigViewPanel {
 		});
 
 		await config.update("oaicopilot.models", updatedModels, vscode.ConfigurationTarget.Global);
-		vscode.window.showInformationMessage(`Provider ${provider} has been updated.`);
+		vscode.window.showInformationMessage(
+			isRenaming
+				? `Provider ${trimmedOriginalProvider} has been renamed to ${trimmedProvider}.`
+				: `Provider ${provider} has been updated.`
+		);
 		// Send refresh signal to frontend
 		await this.sendInit();
 	}
