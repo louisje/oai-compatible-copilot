@@ -350,6 +350,11 @@ window.addEventListener("message", (event) => {
 });
 
 function renderProviders() {
+	// Capture any unsaved edits from the currently rendered rows before we rebuild the DOM,
+	// so that rows the user hasn't saved yet don't lose their pending changes when another
+	// provider row is saved (which triggers a full sendInit()/renderProviders() refresh).
+	const pendingEdits = captureUnsavedProviderEdits();
+
 	// Get all unique providers
 	const providers = Array.from(new Set(state.models.map((m) => m.owned_by).filter(Boolean))).sort((a, b) =>
 		a.localeCompare(b)
@@ -416,6 +421,9 @@ function renderProviders() {
 		})
 		.join("");
 	modelProviderInput.innerHTML = '<option value="">Select Provider</option>' + providerOptions;
+
+	// Restore any unsaved edits captured before this rebuild.
+	restoreUnsavedProviderEdits(pendingEdits);
 
 	providerTableBody.querySelectorAll("tr[data-provider]").forEach((row) => {
 		const saveButton = row.querySelector(".update-provider-btn");
@@ -495,6 +503,62 @@ function getProviderRowValue(row) {
 			input.type === "checkbox" ? input.checked : input.value,
 		])
 	);
+}
+
+// Snapshot every currently-rendered provider row's live field values, keyed by the
+// row's *original* provider id (data-original-provider), before a full re-render wipes them out.
+// Only rows whose Save button is enabled (i.e. actually dirty) are kept, so freshly-saved
+// or untouched rows are rebuilt cleanly from the latest server state.
+function captureUnsavedProviderEdits() {
+	const edits = {};
+	providerTableBody.querySelectorAll("tr[data-provider]").forEach((row) => {
+		const saveButton = row.querySelector(".update-provider-btn");
+		if (!saveButton || saveButton.disabled) {
+			return;
+		}
+		const originalProvider = row.querySelector('[data-field="provider"]')?.getAttribute("data-original-provider");
+		if (!originalProvider) {
+			return;
+		}
+		const values = {};
+		row.querySelectorAll(".provider-input").forEach((input) => {
+			const field = input.getAttribute("data-field");
+			values[field] = input.type === "checkbox" ? input.checked : input.value;
+		});
+		edits[originalProvider] = values;
+	});
+	return edits;
+}
+
+// Re-apply captured unsaved edits to the freshly-rendered rows, and mark their Save
+// button as dirty again so the user's in-progress work on the *other* provider row
+// survives a save-triggered refresh.
+function restoreUnsavedProviderEdits(pendingEdits) {
+	Object.keys(pendingEdits).forEach((originalProvider) => {
+		const providerInput = providerTableBody.querySelector(
+			`[data-field="provider"][data-original-provider="${originalProvider}"]`
+		);
+		const row = providerInput ? providerInput.closest("tr") : null;
+		if (!row) {
+			return;
+		}
+		const values = pendingEdits[originalProvider];
+		row.querySelectorAll(".provider-input").forEach((input) => {
+			const field = input.getAttribute("data-field");
+			if (!(field in values)) {
+				return;
+			}
+			if (input.type === "checkbox") {
+				input.checked = values[field];
+			} else {
+				input.value = values[field];
+			}
+		});
+		const saveButton = row.querySelector(".update-provider-btn");
+		if (saveButton) {
+			saveButton.disabled = false;
+		}
+	});
 }
 
 function renderModels() {
