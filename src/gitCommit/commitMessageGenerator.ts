@@ -5,7 +5,7 @@ import { OpenaiApi } from "../openai/openaiApi";
 import { OpenaiResponsesApi } from "../openai/openaiResponsesApi";
 import { AnthropicApi } from "../anthropic/anthropicApi";
 import { OllamaApi } from "../ollama/ollamaApi";
-import { normalizeUserModels } from "../utils";
+import { getEnabledUserModels } from "../utils";
 import { logger } from "../logger";
 import type { HFModelItem } from "../types";
 
@@ -171,7 +171,10 @@ async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff
 		const prompt = prompts.join("\n\n");
 
 		// Get user models from configuration
-		const userModels = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const userModels = getEnabledUserModels(
+			config.get<unknown>("oaicopilot.models", []),
+			config.get<string[]>("oaicopilot.disabledProviders", [])
+		);
 
 		// Filter models that are marked for commit generation
 		const commitModels = userModels.filter((model: HFModelItem) => model.useForCommitGeneration === true);

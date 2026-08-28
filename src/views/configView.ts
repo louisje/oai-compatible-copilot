@@ -18,6 +18,7 @@ interface InitPayload {
 	commitModel: string;
 	commitLanguage: string;
 	models: HFModelItem[];
+	disabledProviders: string[];
 	providerKeys: Record<string, string>;
 }
 
@@ -36,6 +37,7 @@ interface ExportConfig {
 	commitLanguage: string;
 	commitModel: string;
 	models: HFModelItem[];
+	disabledProviders: string[];
 	providerKeys: Record<string, string>;
 	readFileLines: number;
 }
@@ -66,6 +68,7 @@ type IncomingMessage =
 			apiKey?: string;
 			apiMode?: string;
 			headers?: Record<string, string>;
+			enabled?: boolean;
 	  }
 	| {
 			type: "updateProvider";
@@ -75,6 +78,7 @@ type IncomingMessage =
 			apiKey?: string;
 			apiMode?: string;
 			headers?: Record<string, string>;
+			enabled?: boolean;
 	  }
 	| { type: "deleteProvider"; provider: string }
 	| { type: "addModel"; model: HFModelItem }
@@ -192,7 +196,14 @@ export class ConfigViewPanel {
 				break;
 			}
 			case "addProvider":
-				await this.addProvider(message.provider, message.baseUrl, message.apiKey, message.apiMode, message.headers);
+				await this.addProvider(
+					message.provider,
+					message.baseUrl,
+					message.apiKey,
+					message.apiMode,
+					message.headers,
+					message.enabled
+				);
 				break;
 			case "updateProvider":
 				await this.updateProvider(
@@ -201,7 +212,8 @@ export class ConfigViewPanel {
 					message.baseUrl,
 					message.apiKey,
 					message.apiMode,
-					message.headers
+					message.headers,
+					message.enabled
 				);
 				break;
 			case "deleteProvider":
@@ -254,6 +266,7 @@ export class ConfigViewPanel {
 		const config = vscode.workspace.getConfiguration();
 		const baseUrl = config.get<string>("oaicopilot.baseUrl", "https://api.openai.com/v1");
 		const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
 
 		const apiKey = (await this.secrets.get("oaicopilot.apiKey")) ?? "";
 		const providerKeys: Record<string, string> = {};
@@ -300,6 +313,7 @@ export class ConfigViewPanel {
 			commitModel,
 			commitLanguage,
 			models,
+			disabledProviders,
 			providerKeys,
 		};
 		this.panel.webview.postMessage({ type: "init", payload });
@@ -382,7 +396,8 @@ export class ConfigViewPanel {
 		baseUrl?: string,
 		apiKey?: string,
 		apiMode?: string,
-		headers?: Record<string, string>
+		headers?: Record<string, string>,
+		enabled = true
 	) {
 		const trimmedProvider = provider.trim();
 		if (!trimmedProvider) {
@@ -416,6 +431,7 @@ export class ConfigViewPanel {
 		}
 
 		await config.update("oaicopilot.models", models, vscode.ConfigurationTarget.Global);
+		await this.updateDisabledProvider(config, trimmedProvider, enabled);
 		vscode.window.showInformationMessage(`Provider ${provider} has been added.`);
 		// Send refresh signal to frontend
 		await this.sendInit();
@@ -427,7 +443,8 @@ export class ConfigViewPanel {
 		baseUrl?: string,
 		apiKey?: string,
 		apiMode?: string,
-		headers?: Record<string, string>
+		headers?: Record<string, string>,
+		enabled = true
 	) {
 		const trimmedProvider = provider.trim();
 		if (!trimmedProvider) {
@@ -492,6 +509,14 @@ export class ConfigViewPanel {
 		});
 
 		await config.update("oaicopilot.models", updatedModels, vscode.ConfigurationTarget.Global);
+		const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
+		const updatedDisabledProviders = disabledProviders.filter(
+			(item) => item.toLowerCase() !== normalizedOriginalProvider && item.toLowerCase() !== normalizedProvider
+		);
+		if (!enabled) {
+			updatedDisabledProviders.push(trimmedProvider);
+		}
+		await config.update("oaicopilot.disabledProviders", updatedDisabledProviders, vscode.ConfigurationTarget.Global);
 		vscode.window.showInformationMessage(
 			isRenaming
 				? `Provider ${trimmedOriginalProvider} has been renamed to ${trimmedProvider}.`
@@ -518,11 +543,30 @@ export class ConfigViewPanel {
 		const config = vscode.workspace.getConfiguration();
 		const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
 		const filteredModels = models.filter((model) => model.owned_by !== trimmedProvider);
+		const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
+		const filteredDisabledProviders = disabledProviders.filter((item) => item.toLowerCase() !== normalizedProvider);
 
 		await config.update("oaicopilot.models", filteredModels, vscode.ConfigurationTarget.Global);
+		await config.update("oaicopilot.disabledProviders", filteredDisabledProviders, vscode.ConfigurationTarget.Global);
 		vscode.window.showInformationMessage(`Provider ${provider} and all its models have been deleted.`);
 		// Send refresh signal to frontend
 		await this.sendInit();
+	}
+
+	private async updateDisabledProvider(config: vscode.WorkspaceConfiguration, provider: string, enabled: boolean) {
+		const trimmedProvider = provider.trim();
+		if (!trimmedProvider) {
+			return;
+		}
+
+		const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
+		const normalizedProvider = trimmedProvider.toLowerCase();
+		const updatedProviders = disabledProviders.filter((item) => item.toLowerCase() !== normalizedProvider);
+		if (!enabled) {
+			updatedProviders.push(trimmedProvider);
+		}
+
+		await config.update("oaicopilot.disabledProviders", updatedProviders, vscode.ConfigurationTarget.Global);
 	}
 
 	private async addModel(model: HFModelItem) {
@@ -614,6 +658,7 @@ export class ConfigViewPanel {
 			const commitLanguage = config.get<string>("oaicopilot.commitLanguage", "English");
 			const readFileLines = config.get<number>("oaicopilot.readFileLines", 0);
 			const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+			const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
 
 			const foundModel = models.find((model) => model.useForCommitGeneration === true);
 			const commitModel = foundModel ? `${foundModel.id}${foundModel.configId ? "::" + foundModel.configId : ""}` : "";
@@ -638,6 +683,7 @@ export class ConfigViewPanel {
 				commitLanguage,
 				commitModel,
 				models,
+				disabledProviders,
 				readFileLines,
 				providerKeys,
 			};
@@ -702,6 +748,11 @@ export class ConfigViewPanel {
 			}
 
 			await config.update("oaicopilot.models", importData.models, vscode.ConfigurationTarget.Global);
+			await config.update(
+				"oaicopilot.disabledProviders",
+				importData.disabledProviders ?? [],
+				vscode.ConfigurationTarget.Global
+			);
 
 			for (const [provider, key] of Object.entries(importData.providerKeys)) {
 				const normalized = provider.toLowerCase();

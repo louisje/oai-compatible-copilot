@@ -13,7 +13,7 @@ import type { HFModelItem } from "./types";
 
 import type { OllamaRequestBody } from "./ollama/ollamaTypes";
 
-import { parseModelId, createRetryConfig, executeWithRetry, normalizeUserModels, toAbortSignal } from "./utils";
+import { parseModelId, createRetryConfig, executeWithRetry, getEnabledUserModels, toAbortSignal } from "./utils";
 
 import { prepareLanguageModelChatInformation } from "./provideModel";
 import { countMessageTokens } from "./provideToken";
@@ -76,16 +76,23 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 	): Promise<number> {
 		// Resolve model-specific configuration for accurate token counting
 		const config = vscode.workspace.getConfiguration();
-		const userModels = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const userModels = getEnabledUserModels(
+			config.get<unknown>("oaicopilot.models", []),
+			config.get<string[]>("oaicopilot.disabledProviders", [])
+		);
 		const parsedModelId = parseModelId(model.id);
-		const um = userModels.find(
-			(m) =>
-				m.id === parsedModelId.baseId &&
-				((parsedModelId.configId && m.configId === parsedModelId.configId) ||
-					(!parsedModelId.configId && !m.configId))
-		) ?? userModels.find((m) => m.id === parsedModelId.baseId);
+		const um =
+			userModels.find(
+				(m) =>
+					m.id === parsedModelId.baseId &&
+					((parsedModelId.configId && m.configId === parsedModelId.configId) ||
+						(!parsedModelId.configId && !m.configId))
+			) ?? userModels.find((m) => m.id === parsedModelId.baseId);
+		if (!um) {
+			throw new Error(`Model ${model.id} is disabled or no longer configured.`);
+		}
 
-		const includeReasoningInRequest = um?.include_reasoning_in_request ?? false;
+		const includeReasoningInRequest = um.include_reasoning_in_request ?? false;
 		return countMessageTokens(text, { includeReasoningInRequest });
 	}
 
@@ -122,7 +129,10 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 		try {
 			// get model config from user settings
 			const config = vscode.workspace.getConfiguration();
-			const userModels = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+			const userModels = getEnabledUserModels(
+				config.get<unknown>("oaicopilot.models", []),
+				config.get<string[]>("oaicopilot.disabledProviders", [])
+			);
 
 			// Parse model ID to handle config ID
 			const parsedModelId = parseModelId(model.id);
@@ -140,6 +150,10 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 			// If still no model found, try to find any model matching the base ID (most lenient match, for backward compatibility)
 			if (!um) {
 				um = userModels.find((um) => um.id === parsedModelId.baseId);
+			}
+
+			if (!um) {
+				throw new Error(`Model ${model.id} is disabled or no longer configured.`);
 			}
 
 			// Check if using Ollama native API mode

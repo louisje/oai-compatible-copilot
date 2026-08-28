@@ -59,7 +59,10 @@ function cloneAndNormalizeFunctionSchema(value: unknown): Record<string, unknown
 	if (typeof schema.type !== "string") {
 		schema.type = "object";
 	}
-	if (schema.type === "object" && (!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties))) {
+	if (
+		schema.type === "object" &&
+		(!schema.properties || typeof schema.properties !== "object" || Array.isArray(schema.properties))
+	) {
 		schema.properties = {};
 	}
 	return schema;
@@ -141,6 +144,13 @@ export function normalizeUserModels(models: unknown): HFModelItem[] {
 		out.push({ ...(item as HFModelItem), owned_by: provider });
 	}
 	return out;
+}
+
+export function getEnabledUserModels(models: unknown, disabledProviders: readonly string[] = []): HFModelItem[] {
+	const disabled = new Set(disabledProviders.map((provider) => provider.trim().toLowerCase()).filter(Boolean));
+	return normalizeUserModels(models).filter(
+		(model) => model.enabled !== false && !disabled.has(model.owned_by.trim().toLowerCase())
+	);
 }
 
 /**

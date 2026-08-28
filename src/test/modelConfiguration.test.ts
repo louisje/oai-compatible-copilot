@@ -14,6 +14,7 @@ import { OpenaiApi } from "../openai/openaiApi";
 import { OpenaiResponsesApi } from "../openai/openaiResponsesApi";
 import { prepareLanguageModelChatInformation } from "../provideModel";
 import type { HFModelItem } from "../types";
+import { getEnabledUserModels } from "../utils";
 
 suite("modelConfiguration", () => {
 	const deepSeekModel: HFModelItem = {
@@ -26,6 +27,19 @@ suite("modelConfiguration", () => {
 		max_tokens: 384_000,
 		reasoning_effort: "medium",
 	};
+
+	test("filters disabled models and providers while keeping omitted enabled values active", () => {
+		const models: HFModelItem[] = [
+			{ id: "active", owned_by: "openai" },
+			{ id: "disabled", owned_by: "openai", enabled: false },
+			{ id: "provider-disabled", owned_by: "Anthropic", enabled: true },
+		];
+
+		assert.deepStrictEqual(
+			getEnabledUserModels(models, ["anthropic"]).map((model) => model.id),
+			["active"]
+		);
+	});
 
 	test("only enables the picker when the model has a reasoning effort default", () => {
 		assert.strictEqual(isReasoningEffortPickerEnabled({ id: "m", owned_by: "p" }), false);

@@ -7,7 +7,7 @@ import {
 	type ModelPickerChatInformation,
 	isReasoningEffortValue,
 } from "./modelConfiguration";
-import { normalizeUserModels } from "./utils";
+import { getEnabledUserModels } from "./utils";
 import { VersionManager } from "./versionManager";
 import { fetchGeminiModels } from "./gemini/geminiApi";
 import { fetchOllamaModels } from "./ollama/ollamaApi";
@@ -30,10 +30,11 @@ export async function prepareLanguageModelChatInformation(
 ): Promise<LanguageModelChatInformation[]> {
 	// Check for user-configured models first
 	const config = vscode.workspace.getConfiguration();
-	const userModels = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+	const configuredModels = config.get<unknown>("oaicopilot.models", []);
+	const userModels = getEnabledUserModels(configuredModels, config.get<string[]>("oaicopilot.disabledProviders", []));
 
 	let infos: ModelPickerChatInformation[];
-	if (userModels && userModels.length > 0) {
+	if (Array.isArray(configuredModels) && configuredModels.length > 0) {
 		// Return user-provided models directly
 		infos = userModels
 			.filter((m) => !m.id.startsWith("__provider__"))

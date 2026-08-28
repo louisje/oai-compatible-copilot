@@ -6,6 +6,7 @@ const state = {
 	retry: { enabled: true, max_attempts: 3, interval_ms: 1000, status_codes: [429, 500, 502, 503, 504] },
 	commitModel: "",
 	models: [],
+	disabledProviders: [],
 	providerKeys: {},
 	providerInfo: {},
 };
@@ -33,6 +34,7 @@ const modelFormTitle = document.getElementById("modelFormTitle");
 const modelIdInput = document.getElementById("modelIdInput");
 const modelIdDropdown = document.getElementById("modelIdDropdown");
 const modelProviderInput = document.getElementById("modelProvider");
+const modelEnabledInput = document.getElementById("modelEnabled");
 const modelDisplayNameInput = document.getElementById("modelDisplayName");
 const modelConfigIdInput = document.getElementById("modelConfigId");
 const modelBaseUrlInput = document.getElementById("modelBaseUrl");
@@ -130,6 +132,7 @@ document.getElementById("addProvider").addEventListener("click", () => {
 	const newRow = document.createElement("tr");
 	newRow.innerHTML = `
 		<td><input type="text" class="provider-input" data-field="provider" placeholder="Provider ID" /></td>
+		<td><input type="checkbox" class="provider-input" data-field="enabled" checked /></td>
 		<td><input type="text" class="provider-input" data-field="baseUrl" placeholder="Base URL" /></td>
 		<td><input type="password" class="provider-input" data-field="apiKey" placeholder="API Key" /></td>
 		<td>
@@ -158,7 +161,7 @@ document.getElementById("addProvider").addEventListener("click", () => {
 		const providerData = {};
 		inputs.forEach((input) => {
 			const field = input.getAttribute("data-field");
-			providerData[field] = input.value;
+			providerData[field] = input.type === "checkbox" ? input.checked : input.value;
 		});
 
 		let headers = undefined;
@@ -177,6 +180,7 @@ document.getElementById("addProvider").addEventListener("click", () => {
 			apiKey: providerData.apiKey || undefined,
 			apiMode: providerData.apiMode || undefined,
 			headers: headers,
+			enabled: providerData.enabled,
 		});
 
 		newRow.remove();
@@ -272,8 +276,18 @@ window.addEventListener("message", (event) => {
 
 	switch (message.type) {
 		case "init":
-			const { baseUrl, apiKey, delay, readFileLines, retry, commitModel, models, providerKeys, commitLanguage } =
-				message.payload;
+			const {
+				baseUrl,
+				apiKey,
+				delay,
+				readFileLines,
+				retry,
+				commitModel,
+				models,
+				disabledProviders,
+				providerKeys,
+				commitLanguage,
+			} = message.payload;
 			state.baseUrl = baseUrl;
 			state.apiKey = apiKey;
 			state.delay = delay || 0;
@@ -285,6 +299,7 @@ window.addEventListener("message", (event) => {
 				status_codes: [],
 			};
 			state.models = models || [];
+			state.disabledProviders = disabledProviders || [];
 			state.commitModel = commitModel || "";
 			state.providerKeys = providerKeys || {};
 
@@ -341,7 +356,7 @@ function renderProviders() {
 	);
 
 	if (!providers.length) {
-		providerTableBody.innerHTML = '<tr><td colspan="6" class="no-data">No providers</td></tr>';
+		providerTableBody.innerHTML = '<tr><td colspan="7" class="no-data">No providers</td></tr>';
 		// Clear the provider dropdown as well
 		modelProviderInput.innerHTML = '<option value="">Select Provider</option>';
 		return;
@@ -352,11 +367,13 @@ function renderProviders() {
 			// Get the provider's configuration information
 			const providerModels = state.models.filter((m) => m.owned_by === provider);
 			const firstModel = providerModels[0];
+			const providerEnabled = !state.disabledProviders.some((item) => item.toLowerCase() === provider.toLowerCase());
 			const headersJson = firstModel.headers ? JSON.stringify(firstModel.headers, null, 2) : "";
 
 			return `
 			<tr data-provider="${provider}">
 				<td><input type="text" class="provider-input" data-field="provider" data-original-provider="${provider}" value="${provider}" placeholder="Provider ID" /></td>
+				<td><input type="checkbox" class="provider-input" data-field="enabled" ${providerEnabled ? "checked" : ""} /></td>
 				<td><input type="text" class="provider-input" data-field="baseUrl" value="${firstModel.baseUrl || ""}" placeholder="Base URL" /></td>
 				<td><input type="password" class="provider-input" data-field="apiKey" value="${state.providerKeys[provider] || ""}" placeholder="API Key" /></td>
 				<td>
@@ -409,7 +426,7 @@ function renderProviders() {
 			const providerData = {};
 			inputs.forEach((input) => {
 				const field = input.getAttribute("data-field");
-				providerData[field] = input.value;
+				providerData[field] = input.type === "checkbox" ? input.checked : input.value;
 			});
 
 			const newProvider = (providerData.provider || "").trim();
@@ -435,6 +452,7 @@ function renderProviders() {
 				apiKey: providerData.apiKey || undefined,
 				apiMode: providerData.apiMode || undefined,
 				headers: headers,
+				enabled: providerData.enabled,
 			});
 		});
 	});
@@ -462,7 +480,7 @@ function renderProviders() {
 function renderModels() {
 	const models = state.models.filter((m) => !m.id.startsWith("__provider__")).sort((a, b) => a.id.localeCompare(b.id));
 	if (!models.length) {
-		modelTableBody.innerHTML = '<tr><td colspan="11" class="no-data">No models</td></tr>';
+		modelTableBody.innerHTML = '<tr><td colspan="12" class="no-data">No models</td></tr>';
 		return;
 	}
 
@@ -471,6 +489,7 @@ function renderModels() {
 			return `
 			<tr data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">
 				<td>${model.id}</td>
+				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${model.enabled !== false ? "checked" : ""} /></td>
 				<td>${model.owned_by}</td>
 				<td>${model.displayName || ""}</td>
 				<td>${model.configId || ""}</td>
@@ -489,6 +508,21 @@ function renderModels() {
 		.join("");
 
 	modelTableBody.innerHTML = rows;
+
+	document.querySelectorAll(".model-enabled-toggle").forEach((toggle) => {
+		toggle.addEventListener("change", (event) => {
+			const modelId = event.target.getAttribute("data-model-id");
+			const model = findModel(modelId);
+			if (model) {
+				vscode.postMessage({
+					type: "updateModel",
+					model: { ...model, enabled: event.target.checked },
+					originalModelId: model.id,
+					originalConfigId: model.configId,
+				});
+			}
+		});
+	});
 
 	// Add event listeners for model rows
 	document.querySelectorAll(".update-model-btn").forEach((btn) => {
@@ -535,6 +569,15 @@ function renderModels() {
 	});
 }
 
+function findModel(modelId) {
+	const separatorIndex = modelId.indexOf("::");
+	const baseId = separatorIndex === -1 ? modelId : modelId.slice(0, separatorIndex);
+	const configId = separatorIndex === -1 ? undefined : modelId.slice(separatorIndex + 2);
+	return state.models.find(
+		(model) => model.id === baseId && (configId ? model.configId === configId : !model.configId)
+	);
+}
+
 // Reset model form
 function resetModelForm() {
 	// Clear any error message
@@ -542,6 +585,7 @@ function resetModelForm() {
 
 	modelIdInput.value = "";
 	modelProviderInput.value = "";
+	modelEnabledInput.checked = true;
 	modelDisplayNameInput.value = "";
 	modelConfigIdInput.value = "";
 	modelBaseUrlInput.value = "";
@@ -590,6 +634,7 @@ function collectModelFormData() {
 	return {
 		id: modelIdInput.value.trim(),
 		owned_by: modelProviderInput.value.trim(),
+		enabled: modelEnabledInput.checked,
 		displayName: modelDisplayNameInput.value.trim() || undefined,
 		configId: modelConfigIdInput.value.trim() || undefined,
 		baseUrl: modelBaseUrlInput.value.trim() || undefined,
@@ -828,7 +873,10 @@ function populateCommitModelDropdown() {
 	const commitCompatibleModels = state.models
 		.filter((model) => {
 			const apiMode = model.apiMode || "openai";
-			return apiMode !== "gemini" && !model.id.startsWith("__provider__");
+			const providerEnabled = !state.disabledProviders.some(
+				(provider) => provider.toLowerCase() === model.owned_by.toLowerCase()
+			);
+			return apiMode !== "gemini" && model.enabled !== false && providerEnabled && !model.id.startsWith("__provider__");
 		})
 		.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -899,6 +947,7 @@ function populateModelForm(model) {
 	});
 
 	modelProviderInput.value = currentProvider;
+	modelEnabledInput.checked = model.enabled !== false;
 	modelDisplayNameInput.value = model.displayName || "";
 	modelConfigIdInput.value = model.configId || "";
 	modelBaseUrlInput.value = model.baseUrl || "";

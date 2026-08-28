@@ -117,6 +117,7 @@
 					<thead>
 						<tr>
 							<th>Provider ID</th>
+							<th>Enabled</th>
 							<th>Base URL</th>
 							<th>API Key</th>
 							<th>API Mode</th>
@@ -144,6 +145,7 @@
 					<thead>
 						<tr>
 							<th>Model ID</th>
+							<th>Enabled</th>
 							<th>Provider ID</th>
 							<th>Display Name</th>
 							<th>Config ID</th>
@@ -172,6 +174,11 @@
 							<select id="modelProvider" class="model-input" required>
 								<option value="">Select Provider</option>
 							</select>
+						</div>
+						<div class="field">
+							<label for="modelEnabled">Enabled</label>
+							<div class="field-description">Make this model available to Copilot.</div>
+							<input id="modelEnabled" type="checkbox" checked />
 						</div>
 						<div class="field">
 							<label for="modelVision">Supports Vision</label>

@@ -19,6 +19,7 @@ export interface HFArchitecture {
 
 export interface HFModelItem {
 	id: string;
+	enabled?: boolean;
 	object?: string;
 	created?: number;
 	owned_by: string;
