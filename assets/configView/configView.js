@@ -473,6 +473,10 @@ function renderProviders() {
 				headers: headers,
 				enabled: providerData.enabled,
 			});
+
+			// Mark this row as saved immediately so the pending sendInit()/renderProviders()
+			// refresh doesn't mistake it for a still-dirty row and restore its stale pre-save values.
+			event.target.disabled = true;
 		});
 	});
 
