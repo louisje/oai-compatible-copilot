@@ -387,7 +387,7 @@ function renderProviders() {
 				</td>
 				<td><textarea class="provider-input" data-field="headers" rows="2" placeholder='{"X-API-Version": "v1"}' style="width: 100%; font-family: monospace; font-size: 12px;">${headersJson}</textarea></td>
 				<td class="action-buttons">
-					<button class="update-provider-btn" data-provider="${provider}">Save</button>
+					<button class="update-provider-btn" data-provider="${provider}" disabled>Save</button>
 					<button class="delete-provider-btn danger" data-provider="${provider}">Delete</button>
 				</td>
 			</tr>`;
@@ -416,6 +416,17 @@ function renderProviders() {
 		})
 		.join("");
 	modelProviderInput.innerHTML = '<option value="">Select Provider</option>' + providerOptions;
+
+	providerTableBody.querySelectorAll("tr[data-provider]").forEach((row) => {
+		const saveButton = row.querySelector(".update-provider-btn");
+		const savedValue = getProviderRowValue(row);
+		row.querySelectorAll(".provider-input").forEach((input) => {
+			const eventName = input.type === "checkbox" || input.tagName === "SELECT" ? "change" : "input";
+			input.addEventListener(eventName, () => {
+				saveButton.disabled = getProviderRowValue(row) === savedValue;
+			});
+		});
+	});
 
 	// Add event listeners for provider rows
 	document.querySelectorAll(".update-provider-btn").forEach((btn) => {
@@ -477,6 +488,15 @@ function renderProviders() {
 	});
 }
 
+function getProviderRowValue(row) {
+	return JSON.stringify(
+		Array.from(row.querySelectorAll(".provider-input")).map((input) => [
+			input.getAttribute("data-field"),
+			input.type === "checkbox" ? input.checked : input.value,
+		])
+	);
+}
+
 function renderModels() {
 	const models = state.models.filter((m) => !m.id.startsWith("__provider__")).sort((a, b) => a.id.localeCompare(b.id));
 	if (!models.length) {
@@ -486,10 +506,13 @@ function renderModels() {
 
 	const rows = models
 		.map((model) => {
+			const providerDisabled = state.disabledProviders.some(
+				(provider) => provider.trim().toLowerCase() === model.owned_by.trim().toLowerCase()
+			);
 			return `
-			<tr data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">
+			<tr class="${providerDisabled ? "provider-disabled-model" : ""}" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">
 				<td>${model.id}</td>
-				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${model.enabled !== false ? "checked" : ""} /></td>
+				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${model.enabled !== false ? "checked" : ""} ${providerDisabled ? 'disabled title="Provider is disabled"' : ""} /></td>
 				<td>${model.owned_by}</td>
 				<td>${model.displayName || ""}</td>
 				<td>${model.configId || ""}</td>
@@ -500,7 +523,7 @@ function renderModels() {
 				<td>${model.top_p !== undefined && model.top_p !== null ? model.top_p : ""}</td>
 				<td>${model.delay || ""}</td>
 				<td class="action-buttons">
-					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">Edit</button>
+					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${providerDisabled ? 'disabled title="Provider is disabled"' : ""}>Edit</button>
 					<button class="delete-model-btn danger" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">Delete</button>
 				</td>
 			</tr>`;
