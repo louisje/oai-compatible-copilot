@@ -8,12 +8,22 @@ import {
 	Progress,
 	CancellationToken,
 } from "vscode";
-import { HFModelItem, CustomDataPartMimeTypes, TokenUsage } from "./types";
+import { HFModelItem, CustomDataPartMimeTypes, TokenUsage, ModelPricing } from "./types";
 import { tryParseJSONObject } from "./utils";
 import { logger } from "./logger";
 import { VersionManager } from "./versionManager";
 
 export abstract class CommonApi<TMessage, TRequestBody> {
+	/**
+	 * Cumulative cost in USD across all requests made during this extension host session.
+	 * Reset only when VS Code / the extension host restarts.
+	 */
+	private static _sessionCostUsd = 0;
+
+	/** Get the accumulated session cost in USD. */
+	static getSessionCostUsd(): number {
+		return CommonApi._sessionCostUsd;
+	}
 	/** Buffer for assembling streamed tool calls by index. */
 	protected _toolCallBuffers: Map<number, { id?: string; name?: string; args: string }> = new Map<
 		number,
@@ -57,8 +67,44 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	/** Accumulated token usage from the API response. */
 	protected _usage: TokenUsage | null = null;
 
-	constructor(modelId: string) {
+	/** Optional per-model pricing configuration used for local cost estimation. */
+	protected _pricing: ModelPricing | undefined;
+
+	/** The last cost in USD computed/reported for a request, if any (used for status bar display). */
+	protected _lastCostUsd: number | null = null;
+
+	constructor(modelId: string, pricing?: ModelPricing) {
 		this._modelId = modelId;
+		this._pricing = pricing;
+	}
+
+	/** Get the cost in USD for the most recently reported request, if computed. */
+	getLastCostUsd(): number | null {
+		return this._lastCostUsd;
+	}
+
+	/**
+	 * Estimate the USD cost of a request locally, based on the configured `pricing`.
+	 * Cached input tokens (if reported) are billed at the `cache_read` rate (falling back
+	 * to the `input` rate when not set); the remaining, uncached input tokens are billed at
+	 * the `input` rate; output tokens are billed at the `output` rate.
+	 * @param usage The token usage to estimate cost for.
+	 * @returns The estimated cost in USD, or `undefined` if no pricing is configured.
+	 */
+	private computeLocalCostUsd(usage: TokenUsage): number | undefined {
+		if (!this._pricing) {
+			return undefined;
+		}
+		const unit = this._pricing.unit_per_tokens ?? 1_000_000;
+		const cachedTokens = Math.min(usage.prompt_tokens_details?.cached_tokens ?? 0, usage.prompt_tokens);
+		const uncachedInputTokens = usage.prompt_tokens - cachedTokens;
+		const cacheReadRate = this._pricing.cache_read ?? this._pricing.input;
+
+		const inputCost = (uncachedInputTokens / unit) * this._pricing.input;
+		const cacheCost = (cachedTokens / unit) * cacheReadRate;
+		const outputCost = (usage.completion_tokens / unit) * this._pricing.output;
+
+		return inputCost + cacheCost + outputCost;
 	}
 
 	/**
@@ -526,12 +572,36 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	/**
 	 * Report accumulated token usage as a LanguageModelDataPart so VS Code
 	 * can display usage stats in the Context Window widget.
+	 *
+	 * If the upstream API already reported a `cost_usd` value, that value is used as-is.
+	 * Otherwise, if the model has a `pricing` configuration, the cost is estimated locally
+	 * from the token usage. Either way, the resulting cost (if any) is added to the
+	 * cumulative session cost.
 	 */
 	protected reportUsage(progress: Progress<LanguageModelResponsePart2>): void {
 		if (!this._usage) {
 			return;
 		}
-		logger.info("usage.report", { modelId: this._modelId, usage: this._usage });
+
+		// Upstream-reported cost takes precedence; otherwise fall back to local estimation.
+		let costUsd = this._usage.cost_usd;
+		if (costUsd === undefined) {
+			costUsd = this.computeLocalCostUsd(this._usage);
+			if (costUsd !== undefined) {
+				this._usage = { ...this._usage, cost_usd: costUsd };
+			}
+		}
+
+		if (costUsd !== undefined) {
+			this._lastCostUsd = costUsd;
+			CommonApi._sessionCostUsd += costUsd;
+		}
+
+		logger.info("usage.report", {
+			modelId: this._modelId,
+			usage: this._usage,
+			sessionCostUsd: CommonApi._sessionCostUsd,
+		});
 		try {
 			const bytes = new TextEncoder().encode(JSON.stringify(this._usage));
 			progress.report(new vscode.LanguageModelDataPart(bytes, CustomDataPartMimeTypes.Usage));

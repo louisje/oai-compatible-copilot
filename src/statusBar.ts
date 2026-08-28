@@ -16,6 +16,61 @@ export function initStatusBar(context: vscode.ExtensionContext): vscode.StatusBa
 }
 
 /**
+ * Format a USD amount for display (e.g. "$0.258", "$1.35").
+ * @param value The cost in USD.
+ */
+export function formatCostUsd(value: number): string {
+	if (value === 0) {
+		return "$0.00";
+	}
+	if (value < 0.01) {
+		return `$${value.toFixed(4)}`;
+	}
+	return `$${value.toFixed(2)}`;
+}
+
+/**
+ * Update the status bar to additionally display the cost (in USD) of the last completed
+ * request alongside the cumulative session cost. This is called after a chat response
+ * finishes, independent of the pre-request context/token estimate updated by
+ * {@linkcode updateContextStatusBar}.
+ * @param statusBarItem The status bar item to update.
+ * @param lastCostUsd Cost in USD of the most recently completed request, or `null` if unknown
+ * (e.g. no pricing configured and the upstream API did not report `cost_usd`).
+ * @param sessionCostUsd Cumulative cost in USD across all requests during this session.
+ */
+export function updateStatusBarCost(
+	statusBarItem: vscode.StatusBarItem,
+	lastCostUsd: number | null,
+	sessionCostUsd: number
+): void {
+	if (lastCostUsd === null && sessionCostUsd === 0) {
+		// Nothing to show; leave the existing token/context display untouched.
+		return;
+	}
+
+	const costPrefix = lastCostUsd !== null ? `$(credit-card) ${formatCostUsd(lastCostUsd)} ` : "";
+	// Preserve the existing text but prepend the cost segment if not already present.
+	const existingText = statusBarItem.text.replace(/^\$\(credit-card\)\s+\$[0-9.]+\s+/, "");
+	statusBarItem.text = `${costPrefix}${existingText}`;
+
+	const costTooltipLines = [
+		lastCostUsd !== null ? `Last Request Cost: ${formatCostUsd(lastCostUsd)}` : "Last Request Cost: N/A",
+		`Session Cost: ${formatCostUsd(sessionCostUsd)}`,
+	].join("\n");
+
+	const existingTooltip =
+		typeof statusBarItem.tooltip === "string"
+			? statusBarItem.tooltip
+			: statusBarItem.tooltip instanceof vscode.MarkdownString
+				? statusBarItem.tooltip.value
+				: "";
+	// Strip any previously appended cost block, then append the fresh one.
+	const baseTooltip = existingTooltip.split("\n\n---\n")[0];
+	statusBarItem.tooltip = `${baseTooltip}\n\n---\n${costTooltipLines}`;
+}
+
+/**
  * Format number to thousands (K, M, B) format
  * @param value The number to format
  * @returns Formatted string (e.g., "2.3K", "168.0K")

@@ -46,6 +46,9 @@ const modelApiModeInput = document.getElementById("modelApiMode");
 const modelTemperatureInput = document.getElementById("modelTemperature");
 const modelTopPInput = document.getElementById("modelTopP");
 const modelDelayInput = document.getElementById("modelDelay");
+const modelPriceInputInput = document.getElementById("modelPriceInput");
+const modelPriceOutputInput = document.getElementById("modelPriceOutput");
+const modelPriceCacheReadInput = document.getElementById("modelPriceCacheRead");
 const modelTopKInput = document.getElementById("modelTopK");
 const modelMinPInput = document.getElementById("modelMinP");
 const modelFrequencyPenaltyInput = document.getElementById("modelFrequencyPenalty");
@@ -568,7 +571,7 @@ function restoreUnsavedProviderEdits(pendingEdits) {
 function renderModels() {
 	const models = state.models.filter((m) => !m.id.startsWith("__provider__")).sort((a, b) => a.id.localeCompare(b.id));
 	if (!models.length) {
-		modelTableBody.innerHTML = '<tr><td colspan="12" class="no-data">No models</td></tr>';
+		modelTableBody.innerHTML = '<tr><td colspan="13" class="no-data">No models</td></tr>';
 		return;
 	}
 
@@ -590,6 +593,7 @@ function renderModels() {
 				<td>${model.temperature !== undefined && model.temperature !== null ? model.temperature : ""}</td>
 				<td>${model.top_p !== undefined && model.top_p !== null ? model.top_p : ""}</td>
 				<td>${model.delay || ""}</td>
+				<td>${model.pricing ? `$${model.pricing.input} / $${model.pricing.output}` : ""}</td>
 				<td class="action-buttons">
 					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${providerDisabled ? 'disabled title="Provider is disabled"' : ""}>Edit</button>
 					<button class="delete-model-btn danger" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">Delete</button>
@@ -688,6 +692,9 @@ function resetModelForm() {
 	modelTemperatureInput.value = 0;
 	modelTopPInput.value = "";
 	modelDelayInput.value = "";
+	modelPriceInputInput.value = "";
+	modelPriceOutputInput.value = "";
+	modelPriceCacheReadInput.value = "";
 	modelTopKInput.value = "";
 	modelMinPInput.value = "";
 	modelFrequencyPenaltyInput.value = "";
@@ -737,6 +744,7 @@ function collectModelFormData() {
 		temperature: modelTemperatureInput.value !== "" ? parseFloat(modelTemperatureInput.value) : undefined,
 		top_p: modelTopPInput.value !== "" ? parseFloat(modelTopPInput.value) : undefined,
 		delay: modelDelayInput.value ? parseInt(modelDelayInput.value) : undefined,
+		pricing: buildPricingConfig(),
 		top_k: modelTopKInput.value ? parseInt(modelTopKInput.value) : undefined,
 		min_p: modelMinPInput.value !== "" ? parseFloat(modelMinPInput.value) : undefined,
 		frequency_penalty:
@@ -791,6 +799,23 @@ function buildThinkingConfig() {
 
 	if (type !== undefined) {
 		return { type };
+	}
+	return undefined;
+}
+
+// Build pricing configuration object from form fields
+function buildPricingConfig() {
+	const input = modelPriceInputInput.value !== "" ? parseFloat(modelPriceInputInput.value) : undefined;
+	const output = modelPriceOutputInput.value !== "" ? parseFloat(modelPriceOutputInput.value) : undefined;
+	const cacheRead = modelPriceCacheReadInput.value !== "" ? parseFloat(modelPriceCacheReadInput.value) : undefined;
+
+	// Pricing is only meaningful when both input and output prices are set.
+	if (input !== undefined && output !== undefined) {
+		return {
+			input,
+			output,
+			cache_read: cacheRead,
+		};
 	}
 	return undefined;
 }
@@ -895,6 +920,21 @@ function validateModelData(modelData) {
 	if (modelData.top_p !== undefined && (isNaN(modelData.top_p) || modelData.top_p < 0 || modelData.top_p > 1)) {
 		showModelError("Top P must be between 0 and 1.");
 		return false;
+	}
+	if (modelData.pricing !== undefined) {
+		const { input, output, cache_read: cacheRead } = modelData.pricing;
+		if (isNaN(input) || input < 0) {
+			showModelError("Input Price must be a non-negative number.");
+			return false;
+		}
+		if (isNaN(output) || output < 0) {
+			showModelError("Output Price must be a non-negative number.");
+			return false;
+		}
+		if (cacheRead !== undefined && (isNaN(cacheRead) || cacheRead < 0)) {
+			showModelError("Cache Read Price must be a non-negative number.");
+			return false;
+		}
 	}
 	if (modelData.delay !== undefined && (isNaN(modelData.delay) || modelData.delay < 0)) {
 		showModelError("Delay must be a non-negative number.");
@@ -1045,6 +1085,9 @@ function populateModelForm(model) {
 	modelFamilyInput.value = model.family || "";
 	modelContextLengthInput.value = model.context_length || "";
 	modelMaxTokensInput.value = model.max_tokens || "";
+	modelPriceInputInput.value = model.pricing?.input !== undefined ? model.pricing.input : "";
+	modelPriceOutputInput.value = model.pricing?.output !== undefined ? model.pricing.output : "";
+	modelPriceCacheReadInput.value = model.pricing?.cache_read !== undefined ? model.pricing.cache_read : "";
 	modelVisionInput.value = model.vision !== undefined ? String(model.vision) : "";
 	modelApiModeInput.value = model.apiMode || "openai";
 	modelTemperatureInput.value = model.temperature !== undefined && model.temperature !== null ? model.temperature : "";

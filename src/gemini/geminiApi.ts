@@ -7,7 +7,7 @@ import {
 	Progress,
 } from "vscode";
 
-import type { HFModelItem } from "../types";
+import type { HFModelItem, ModelPricing } from "../types";
 import type { OpenAIFunctionToolDef } from "../openai/openaiTypes";
 
 import { CommonApi } from "../commonApi";
@@ -490,9 +490,10 @@ function openaiToolChoiceToGeminiToolConfig(toolChoice: unknown): GeminiToolConf
 export class GeminiApi extends CommonApi<GeminiChatMessage, GeminiGenerateContentRequest> {
 	constructor(
 		modelId: string,
-		private readonly toolCallMetaByCallId?: Map<string, GeminiToolCallMeta>
+		private readonly toolCallMetaByCallId?: Map<string, GeminiToolCallMeta>,
+		pricing?: ModelPricing
 	) {
-		super(modelId);
+		super(modelId, pricing);
 	}
 
 	convertMessages(

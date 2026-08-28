@@ -155,6 +155,7 @@
 							<th>Temperature</th>
 							<th>TopP</th>
 							<th>Delay (ms)</th>
+							<th>Price ($/1M In/Out)</th>
 							<th>Actions</th>
 						</tr>
 					</thead>
@@ -275,6 +276,42 @@
 							<label for="modelDelay">Delay (ms)</label>
 							<div class="field-description">Model-specific delay in milliseconds between consecutive requests.</div>
 							<input id="modelDelay" type="number" class="model-input" placeholder="0" min="0" />
+						</div>
+					</div>
+					<div class="row">
+						<div class="field">
+							<label for="modelPriceInput">Input Price ($/1M tokens)</label>
+							<div class="field-description">
+								Price in USD per 1,000,000 input (prompt) tokens. Used to estimate request cost locally when
+								the API does not report it.
+							</div>
+							<input id="modelPriceInput" type="number" class="model-input" min="0" step="0.01" placeholder="e.g., 3.00" />
+						</div>
+						<div class="field">
+							<label for="modelPriceOutput">Output Price ($/1M tokens)</label>
+							<div class="field-description">Price in USD per 1,000,000 output (completion) tokens.</div>
+							<input
+								id="modelPriceOutput"
+								type="number"
+								class="model-input"
+								min="0"
+								step="0.01"
+								placeholder="e.g., 15.00"
+							/>
+						</div>
+						<div class="field">
+							<label for="modelPriceCacheRead">Cache Read Price ($/1M tokens)</label>
+							<div class="field-description">
+								Price in USD per 1,000,000 cached input tokens. Falls back to Input Price when left blank.
+							</div>
+							<input
+								id="modelPriceCacheRead"
+								type="number"
+								class="model-input"
+								min="0"
+								step="0.01"
+								placeholder="e.g., 0.30"
+							/>
 						</div>
 					</div>
 					<!-- Advanced Settings Section -->

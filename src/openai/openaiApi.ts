@@ -7,7 +7,7 @@ import {
 	Progress,
 } from "vscode";
 
-import type { HFModelItem, ReasoningConfig, TokenUsage } from "../types";
+import type { HFModelItem, ModelPricing, ReasoningConfig, TokenUsage } from "../types";
 import { getConfiguredReasoningEffort, isReasoningEffortPickerEnabled } from "../modelConfiguration";
 
 import type {
@@ -33,8 +33,8 @@ import { CommonApi } from "../commonApi";
 import { logger } from "../logger";
 
 export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unknown>> {
-	constructor(modelId: string) {
-		super(modelId);
+	constructor(modelId: string, pricing?: ModelPricing) {
+		super(modelId, pricing);
 	}
 
 	/**

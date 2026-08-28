@@ -7,7 +7,7 @@ import {
 	Progress,
 } from "vscode";
 
-import type { HFModelItem } from "../types";
+import type { HFModelItem, ModelPricing } from "../types";
 
 import type { OllamaMessage, OllamaRequestBody, OllamaStreamChunk, OllamaToolCall } from "./ollamaTypes";
 
@@ -17,8 +17,8 @@ import { CommonApi } from "../commonApi";
 import { logger } from "../logger";
 
 export class OllamaApi extends CommonApi<OllamaMessage, OllamaRequestBody> {
-	constructor(modelId: string) {
-		super(modelId);
+	constructor(modelId: string, pricing?: ModelPricing) {
+		super(modelId, pricing);
 	}
 
 	/**

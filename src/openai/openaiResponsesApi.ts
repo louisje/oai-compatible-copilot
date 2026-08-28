@@ -7,7 +7,7 @@ import {
 	Progress,
 } from "vscode";
 
-import type { HFModelItem } from "../types";
+import type { HFModelItem, ModelPricing } from "../types";
 import { getConfiguredReasoningEffort, isReasoningEffortPickerEnabled } from "../modelConfiguration";
 import type { OpenAIToolCall } from "./openaiTypes";
 
@@ -72,8 +72,8 @@ export type ResponsesInputItem =
 export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<string, unknown>> {
 	private _responseId: string | null = null;
 
-	constructor(modelId: string) {
-		super(modelId);
+	constructor(modelId: string, pricing?: ModelPricing) {
+		super(modelId, pricing);
 	}
 
 	get responseId(): string | null {

@@ -7,7 +7,7 @@ import {
 	Progress,
 } from "vscode";
 
-import type { HFModelItem } from "../types";
+import type { HFModelItem, ModelPricing } from "../types";
 
 import type {
 	AnthropicMessage,
@@ -39,8 +39,8 @@ export class AnthropicApi extends CommonApi<AnthropicMessage, AnthropicRequestBo
 	 */
 	private readonly _cacheControlEnabled: boolean;
 
-	constructor(modelId: string, cacheControlEnabled = true) {
-		super(modelId);
+	constructor(modelId: string, cacheControlEnabled = true, pricing?: ModelPricing) {
+		super(modelId, pricing);
 		this._cacheControlEnabled = cacheControlEnabled;
 	}
 

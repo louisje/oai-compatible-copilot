@@ -17,7 +17,7 @@ import { parseModelId, createRetryConfig, executeWithRetry, getEnabledUserModels
 
 import { prepareLanguageModelChatInformation } from "./provideModel";
 import { countMessageTokens } from "./provideToken";
-import { updateContextStatusBar } from "./statusBar";
+import { updateContextStatusBar, updateStatusBarCost } from "./statusBar";
 import { OllamaApi } from "./ollama/ollamaApi";
 import { OpenaiApi } from "./openai/openaiApi";
 import { OpenaiResponsesApi } from "./openai/openaiResponsesApi";
@@ -126,6 +126,9 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 			},
 		};
 		const requestStartTime = Date.now();
+		// Track whichever API instance ends up being used, so we can read its computed
+		// request cost (if any) in `finally` to update the status bar.
+		let activeApi: CommonApi<unknown, unknown> | undefined;
 		try {
 			// get model config from user settings
 			const config = vscode.workspace.getConfiguration();
@@ -229,7 +232,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 			});
 			if (apiMode === "ollama") {
 				// Ollama native API mode
-				const ollamaApi = new OllamaApi(model.id);
+				const ollamaApi = new OllamaApi(model.id, um?.pricing);
+				activeApi = ollamaApi as unknown as CommonApi<unknown, unknown>;
 				const ollamaMessages = ollamaApi.convertMessages(messages, modelConfig);
 
 				let ollamaRequestBody: OllamaRequestBody = {
@@ -270,7 +274,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				await ollamaApi.processStreamingResponse(response.body, trackingProgress, token);
 			} else if (apiMode === "anthropic") {
 				// Anthropic API mode
-				const anthropicApi = new AnthropicApi(model.id, um?.cache_control !== false);
+				const anthropicApi = new AnthropicApi(model.id, um?.cache_control !== false, um?.pricing);
+				activeApi = anthropicApi as unknown as CommonApi<unknown, unknown>;
 				const anthropicMessages = anthropicApi.convertMessages(messages, modelConfig);
 
 				// requestBody
@@ -314,7 +319,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				await anthropicApi.processStreamingResponse(response.body, trackingProgress, token);
 			} else if (apiMode === "openai-responses") {
 				// OpenAI Responses API mode
-				const openaiResponsesApi = new OpenaiResponsesApi(model.id);
+				const openaiResponsesApi = new OpenaiResponsesApi(model.id, um?.pricing);
+				activeApi = openaiResponsesApi as unknown as CommonApi<unknown, unknown>;
 				const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "");
 				const statefulModelId = parsedModelId.baseId;
 
@@ -425,7 +431,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				}
 			} else if (apiMode === "gemini") {
 				// Gemini native API mode
-				const geminiApi = new GeminiApi(model.id, this._geminiToolCallMetaByCallId);
+				const geminiApi = new GeminiApi(model.id, this._geminiToolCallMetaByCallId, um?.pricing);
+				activeApi = geminiApi as unknown as CommonApi<unknown, unknown>;
 				const geminiMessages = geminiApi.convertMessages(messages, modelConfig);
 
 				const systemParts: string[] = [];
@@ -487,7 +494,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				await geminiApi.processStreamingResponse(response.body, trackingProgress, token);
 			} else {
 				// OpenAI compatible API mode (default)
-				const openaiApi = new OpenaiApi(model.id);
+				const openaiApi = new OpenaiApi(model.id, um?.pricing);
+				activeApi = openaiApi as unknown as CommonApi<unknown, unknown>;
 				const openaiMessages = openaiApi.convertMessages(messages, modelConfig);
 
 				// requestBody
@@ -544,6 +552,10 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 			logger.info("request.end", { modelId: model.id, durationMs });
 			// Update last request time after successful completion
 			this._lastRequestTime = Date.now();
+			// Refresh the status bar with the cost of this request (if computed) and the
+			// cumulative session cost.
+			const lastCostUsd = activeApi?.getLastCostUsd() ?? null;
+			updateStatusBarCost(this.statusBarItem, lastCostUsd, CommonApi.getSessionCostUsd());
 		}
 	}
 

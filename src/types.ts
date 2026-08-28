@@ -109,6 +109,13 @@ export interface HFModelItem {
 	 * Defaults to `true`. Set to `false` for upstream providers that reject `cache_control`.
 	 */
 	cache_control?: boolean;
+
+	/**
+	 * Optional pricing configuration used to locally estimate the USD cost of a request
+	 * when the upstream API does not report a `cost_usd` field in its `usage` payload.
+	 * Also surfaced to VS Code's Model Picker via the `languageModelPricing` proposed API.
+	 */
+	pricing?: ModelPricing;
 }
 
 /**
@@ -185,4 +192,26 @@ export interface TokenUsage {
 	completion_tokens: number;
 	total_tokens: number;
 	prompt_tokens_details?: TokenUsageDetails;
+	/**
+	 * Cost in USD for this request, if reported directly by the upstream API
+	 * (e.g. via a non-standard `cost_usd` field in the `usage` object).
+	 * When present, this value takes precedence over any locally computed cost.
+	 */
+	cost_usd?: number;
+}
+
+/**
+ * Per-model pricing configuration used to locally estimate request cost
+ * when the upstream API does not report `cost_usd` directly.
+ * All prices are expressed in USD per `unit_per_tokens` tokens (default: 1,000,000).
+ */
+export interface ModelPricing {
+	/** Price per `unit_per_tokens` input (prompt) tokens, in USD. */
+	input: number;
+	/** Price per `unit_per_tokens` output (completion) tokens, in USD. */
+	output: number;
+	/** Price per `unit_per_tokens` cached/cache-read input tokens, in USD. Falls back to `input` when not set. */
+	cache_read?: number;
+	/** Token unit divisor for the prices above. Defaults to 1,000,000 (i.e. USD per 1M tokens). */
+	unit_per_tokens?: number;
 }

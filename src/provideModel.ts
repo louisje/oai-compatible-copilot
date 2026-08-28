@@ -6,6 +6,7 @@ import {
 	createReasoningEffortConfigurationSchema,
 	type ModelPickerChatInformation,
 	isReasoningEffortValue,
+	buildPricingPickerFields,
 } from "./modelConfiguration";
 import { getEnabledUserModels } from "./utils";
 import { VersionManager } from "./versionManager";
@@ -63,6 +64,7 @@ export async function prepareLanguageModelChatInformation(
 					...(reasoningEffort
 						? { configurationSchema: createReasoningEffortConfigurationSchema(reasoningEffort) }
 						: {}),
+					...buildPricingPickerFields(m.pricing),
 					capabilities: {
 						toolCalling: true,
 						imageInput: m?.vision ?? false,
