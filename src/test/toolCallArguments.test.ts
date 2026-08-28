@@ -154,7 +154,7 @@ suite("toolCallArguments", () => {
 		assert.deepStrictEqual(toolCalls[0].input, { path: "/tmp/test.txt" });
 	});
 
-	test("does not emit buffered tool calls on stop finish reason", async () => {
+	test("emits buffered tool calls on stop finish reason when the stream ends", async () => {
 		const toolCalls = await collectToolCalls([
 			{
 				choices: [
@@ -174,6 +174,8 @@ suite("toolCallArguments", () => {
 			},
 		]);
 
-		assert.strictEqual(toolCalls.length, 0);
+		assert.strictEqual(toolCalls.length, 1);
+		assert.strictEqual(toolCalls[0].name, "read_file");
+		assert.deepStrictEqual(toolCalls[0].input, {});
 	});
 });

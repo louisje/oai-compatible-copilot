@@ -350,8 +350,7 @@ export class ConfigViewPanel {
 				if (fullModelId === commitModel) {
 					return { ...model, useForCommitGeneration: true };
 				} else {
-					const { useForCommitGeneration: _useForCommitGeneration, ...rest } = model;
-					return rest;
+					return { ...model, useForCommitGeneration: undefined };
 				}
 			});
 			await config.update("oaicopilot.models", updatedModels, vscode.ConfigurationTarget.Global);
@@ -496,13 +495,12 @@ export class ConfigViewPanel {
 		// Update the provider's configuration in the model list
 		const updatedModels = models.map((model) => {
 			if (model.owned_by === trimmedOriginalProvider) {
-				const { headers: _, ...rest } = model;
 				return {
-					...rest,
+					...model,
 					owned_by: trimmedProvider,
 					baseUrl: baseUrl || model.baseUrl,
 					apiMode: (apiMode as HFApiMode) || model.apiMode,
-					...(headers !== undefined && { headers }),
+					headers,
 				};
 			}
 			return model;
