@@ -117,18 +117,6 @@
 		"configuration": {
 			"title": "OAI Compatible Copilot",
 			"properties": {
-				"oaicopilot.logLevel": {
-					"type": "string",
-					"default": "off",
-					"enum": [
-						"off",
-						"debug",
-						"info",
-						"warn",
-						"error"
-					],
-					"description": "Debug log level. Logs are written to ~/.copilot/oaicopilot/logs/ as JSON lines. Default is 'off' (no logging)."
-				},
 				"oaicopilot.baseUrl": {
 					"type": "string",
 					"default": "https://router.huggingface.co/v1",

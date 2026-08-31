@@ -3,71 +3,55 @@ import * as path from "path";
 import * as os from "os";
 import * as vscode from "vscode";
 
-type LogLevel = "off" | "debug" | "info" | "warn" | "error";
-
-const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
-	off: -1,
-	debug: 0,
-	info: 1,
-	warn: 2,
-	error: 3,
-};
-
 const LOG_RETENTION_DAYS = 7;
 const SENSITIVE_HEADER_KEYS = ["Authorization", "x-api-key", "x-goog-api-key"];
 
 class Logger {
-	private _level: LogLevel = "off";
 	private _logDir = "";
 	private _initialized = false;
-	private _outputChannel: vscode.OutputChannel | undefined;
+	private _outputChannel: vscode.LogOutputChannel | undefined;
 
 	/**
-	 * Initialize the logger: read config, ensure log directory exists.
+	 * Initialize the logger: create the log output channel, ensure log directory exists.
 	 * Optionally register an extension context so the output channel gets disposed on deactivate.
+	 *
+	 * The log level is controlled by the user via the Output channel's own UI (or the
+	 * editor-wide `env.logLevel`), following VS Code's built-in LogOutputChannel convention
+	 * instead of a custom `oaicopilot.logLevel` setting.
 	 */
 	init(context?: vscode.ExtensionContext): void {
 		this._logDir = path.join(os.homedir(), ".copilot", "oaicopilot", "logs");
-		this._outputChannel = vscode.window.createOutputChannel("OAI Compatible Provider");
+		this._outputChannel = vscode.window.createOutputChannel("OAI Compatible Provider", { log: true });
 		if (context) {
 			context.subscriptions.push(this._outputChannel);
 		}
-		this.reloadConfig();
 		this.ensureLogDir();
 		this._initialized = true;
 	}
 
-	/**
-	 * Reload log level from VS Code configuration.
-	 */
-	reloadConfig(): void {
-		const config = vscode.workspace.getConfiguration();
-		this._level = config.get<LogLevel>("oaicopilot.logLevel", "off");
-	}
-
 	debug(tag: string, data: Record<string, unknown>): void {
-		if (this._level === "off" || LOG_LEVEL_PRIORITY[this._level] > LOG_LEVEL_PRIORITY.debug) {
+		if (!this._outputChannel || this._outputChannel.logLevel > vscode.LogLevel.Debug) {
 			return;
 		}
 		this.write("debug", tag, data);
 	}
 
 	info(tag: string, data: Record<string, unknown>): void {
-		if (this._level === "off" || LOG_LEVEL_PRIORITY[this._level] > LOG_LEVEL_PRIORITY.info) {
+		if (!this._outputChannel || this._outputChannel.logLevel > vscode.LogLevel.Info) {
 			return;
 		}
 		this.write("info", tag, data);
 	}
 
 	warn(tag: string, data: Record<string, unknown>): void {
-		if (this._level === "off" || LOG_LEVEL_PRIORITY[this._level] > LOG_LEVEL_PRIORITY.warn) {
+		if (!this._outputChannel || this._outputChannel.logLevel > vscode.LogLevel.Warning) {
 			return;
 		}
 		this.write("warn", tag, data);
 	}
 
 	error(tag: string, data: Record<string, unknown>): void {
-		if (this._level === "off" || LOG_LEVEL_PRIORITY[this._level] > LOG_LEVEL_PRIORITY.error) {
+		if (!this._outputChannel || this._outputChannel.logLevel > vscode.LogLevel.Error) {
 			return;
 		}
 		this.write("error", tag, data);
@@ -125,7 +109,7 @@ class Logger {
 		return path.join(this._logDir, `oaicopilot-${dateStr}.log`);
 	}
 
-	private write(level: string, tag: string, data: Record<string, unknown>): void {
+	private write(level: "debug" | "info" | "warn" | "error", tag: string, data: Record<string, unknown>): void {
 		if (!this._initialized) {
 			return;
 		}
@@ -141,9 +125,9 @@ class Logger {
 		const line = JSON.stringify(logEntry) + "\n";
 		const filePath = this.getLogFilePath();
 
-		this._outputChannel?.appendLine(
-			`[${logEntry.ts}] [${level.toUpperCase()}] [${tag}] ${JSON.stringify(sanitizedData)}`
-		);
+		// Use the LogOutputChannel's own level methods so its built-in log level
+		// filtering, colouring, and "Help: Open Logs Folder" integration apply.
+		this._outputChannel?.[level](`[${tag}] ${JSON.stringify(sanitizedData)}`);
 
 		try {
 			fs.appendFileSync(filePath, line, "utf8");

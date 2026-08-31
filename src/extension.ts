@@ -117,15 +117,6 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Watch for logLevel configuration changes
-	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("oaicopilot.logLevel")) {
-				logger.reloadConfig();
-			}
-		})
-	);
-
 	// Command to reveal the extension's Output channel
 	context.subscriptions.push(
 		vscode.commands.registerCommand("oaicopilot.showLogs", () => {
