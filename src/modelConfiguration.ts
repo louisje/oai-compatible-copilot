@@ -61,6 +61,7 @@ export type ModelPickerChatInformation = vscode.LanguageModelChatInformation & {
 	readonly inputCost?: number;
 	readonly outputCost?: number;
 	readonly cacheCost?: number;
+	readonly cacheWriteCost?: number;
 };
 
 /**
@@ -79,6 +80,7 @@ export function buildPricingPickerFields(pricing: import("./types").ModelPricing
 	const inputCost = pricing.input * scale;
 	const outputCost = pricing.output * scale;
 	const cacheCost = pricing.cache_read !== undefined ? pricing.cache_read * scale : undefined;
+	const cacheWriteCost = pricing.cache_write !== undefined ? pricing.cache_write * scale : undefined;
 
 	const label = `$${inputCost.toFixed(2)}/1M input · $${outputCost.toFixed(2)}/1M output`;
 
@@ -87,6 +89,7 @@ export function buildPricingPickerFields(pricing: import("./types").ModelPricing
 		inputCost,
 		outputCost,
 		...(cacheCost !== undefined ? { cacheCost } : {}),
+		...(cacheWriteCost !== undefined ? { cacheWriteCost } : {}),
 	};
 }
 

@@ -182,6 +182,8 @@ export const CustomDataPartMimeTypes = {
  */
 export interface TokenUsageDetails {
 	cached_tokens: number;
+	/** Tokens written to the prompt cache (e.g. Anthropic `cache_creation_input_tokens`). */
+	cache_write_tokens?: number;
 }
 
 /**
@@ -212,6 +214,8 @@ export interface ModelPricing {
 	output: number;
 	/** Price per `unit_per_tokens` cached/cache-read input tokens, in USD. Falls back to `input` when not set. */
 	cache_read?: number;
+	/** Price per `unit_per_tokens` cache-write input tokens, in USD. Falls back to `input` when not set. */
+	cache_write?: number;
 	/** Token unit divisor for the prices above. Defaults to 1,000,000 (i.e. USD per 1M tokens). */
 	unit_per_tokens?: number;
 }

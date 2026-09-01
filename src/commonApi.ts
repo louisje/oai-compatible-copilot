@@ -86,8 +86,9 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	/**
 	 * Estimate the USD cost of a request locally, based on the configured `pricing`.
 	 * Cached input tokens (if reported) are billed at the `cache_read` rate (falling back
-	 * to the `input` rate when not set); the remaining, uncached input tokens are billed at
-	 * the `input` rate; output tokens are billed at the `output` rate.
+	 * to the `input` rate when not set); cache-write tokens (if reported) are billed at the
+	 * `cache_write` rate (falling back to `input`); the remaining, uncached input tokens are
+	 * billed at the `input` rate; output tokens are billed at the `output` rate.
 	 * @param usage The token usage to estimate cost for.
 	 * @returns The estimated cost in USD, or `undefined` if no pricing is configured.
 	 */
@@ -97,14 +98,20 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 		}
 		const unit = this._pricing.unit_per_tokens ?? 1_000_000;
 		const cachedTokens = Math.min(usage.prompt_tokens_details?.cached_tokens ?? 0, usage.prompt_tokens);
-		const uncachedInputTokens = usage.prompt_tokens - cachedTokens;
+		const cacheWriteTokens = Math.min(
+			Math.max(usage.prompt_tokens_details?.cache_write_tokens ?? 0, 0),
+			usage.prompt_tokens - cachedTokens
+		);
+		const uncachedInputTokens = usage.prompt_tokens - cachedTokens - cacheWriteTokens;
 		const cacheReadRate = this._pricing.cache_read ?? this._pricing.input;
+		const cacheWriteRate = this._pricing.cache_write ?? this._pricing.input;
 
 		const inputCost = (uncachedInputTokens / unit) * this._pricing.input;
 		const cacheCost = (cachedTokens / unit) * cacheReadRate;
+		const cacheWriteCost = (cacheWriteTokens / unit) * cacheWriteRate;
 		const outputCost = (usage.completion_tokens / unit) * this._pricing.output;
 
-		return inputCost + cacheCost + outputCost;
+		return inputCost + cacheCost + cacheWriteCost + outputCost;
 	}
 
 	/**

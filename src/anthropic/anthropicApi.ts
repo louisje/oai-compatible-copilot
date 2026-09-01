@@ -540,6 +540,7 @@ export class AnthropicApi extends CommonApi<AnthropicMessage, AnthropicRequestBo
 					total_tokens: promptTokens + (chunk.usage.output_tokens ?? 0),
 					prompt_tokens_details: {
 						cached_tokens: cacheReadTokens,
+						cache_write_tokens: cacheCreateTokens > 0 ? cacheCreateTokens : undefined,
 					},
 				};
 				logger.debug("usage.capture", { modelId: this._modelId, usage: this._usage });
