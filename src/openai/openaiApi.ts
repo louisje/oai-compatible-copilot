@@ -311,6 +311,10 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 					}
 					const data = line.slice(5).trim();
 					logger.debug("openai.stream.chunk", { modelId, data });
+					if (!data) {
+						// Skip empty SSE data lines (keep-alive / empty events) to avoid JSON.parse("") errors.
+						continue;
+					}
 					if (data === "[DONE]") {
 						// Flush buffered tool calls on [DONE] for providers that never send finish_reason="tool_calls".
 						await this.flushToolCallBuffers(progress, false);

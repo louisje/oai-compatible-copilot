@@ -455,6 +455,10 @@ export class AnthropicApi extends CommonApi<AnthropicMessage, AnthropicRequestBo
 
 					const data = line.slice(5).trim();
 					logger.debug("anthropic.stream.chunk", { modelId, data });
+					if (!data) {
+						// Skip empty SSE data lines (keep-alive / empty events) to avoid JSON.parse("") errors.
+						continue;
+					}
 					if (data === "[DONE]") {
 						// Do not throw on [DONE]; any incomplete/empty buffers are ignored.
 						await this.flushToolCallBuffers(progress, /*throwOnInvalid*/ false);

@@ -330,6 +330,10 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 					}
 					const data = line.slice(5).trim();
 					logger.debug("responses.stream.chunk", { modelId, data });
+					if (!data) {
+						// Skip empty SSE data lines (keep-alive / empty events) to avoid JSON.parse("") errors.
+						continue;
+					}
 					if (data === "[DONE]") {
 						await this.flushToolCallBuffers(progress, false);
 						continue;
