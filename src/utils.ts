@@ -349,30 +349,56 @@ export function tryParseJSONObject(text: string): { ok: true; value: Record<stri
 
 export function throwIfStreamErrorPayload(payload: Record<string, unknown>, providerName: string): void {
 	const errorValue = payload.error;
-	if (!errorValue) {
+
+	// Some gateways emit SSE error events in non-standard shapes instead of `{"error": {...}}`:
+	// - {"event": "error", "data": {"status_code": 500, "detail": "..."}}
+	// - {"type": "error", "code": "...", "message": "..."}
+	let errorObj: Record<string, unknown> | undefined;
+	if (errorValue && typeof errorValue === "object" && !Array.isArray(errorValue)) {
+		errorObj = errorValue as Record<string, unknown>;
+	} else {
+		const eventType = typeof payload.event === "string" ? payload.event : "";
+		const typeValue = typeof payload.type === "string" ? payload.type : "";
+		if (eventType === "error" || typeValue === "error") {
+			const dataValue = payload.data;
+			if (dataValue && typeof dataValue === "object" && !Array.isArray(dataValue)) {
+				errorObj = dataValue as Record<string, unknown>;
+			} else {
+				// Error fields may live at the top level or in a plain string.
+				errorObj = payload;
+				if (typeof dataValue === "string" && dataValue.trim()) {
+					errorObj = { message: dataValue };
+				}
+			}
+		}
+	}
+
+	if (!errorValue && !errorObj) {
 		return;
 	}
 
-	let message = "Unknown streaming error";
 	if (typeof errorValue === "string") {
-		message = errorValue;
-	} else if (errorValue && typeof errorValue === "object") {
-		const errorObj = errorValue as Record<string, unknown>;
-		if (typeof errorObj.message === "string" && errorObj.message.trim()) {
-			message = errorObj.message;
+		throw new Error(`${providerName} stream error: ${errorValue}`);
+	}
+
+	let message = "Unknown streaming error";
+	if (errorObj) {
+		const rawMessage = errorObj.message ?? errorObj.detail;
+		if (typeof rawMessage === "string" && rawMessage.trim()) {
+			message = rawMessage;
 		} else {
 			try {
 				message = JSON.stringify(errorObj);
 			} catch {
-				message = String(errorValue);
+				message = String(errorObj);
 			}
 		}
 	}
 
 	let code = "";
-	if (errorValue && typeof errorValue === "object") {
-		const rawCode = (errorValue as Record<string, unknown>).code;
-		if (typeof rawCode === "string" && rawCode.trim()) {
+	if (errorObj) {
+		const rawCode = errorObj.code ?? errorObj.status_code;
+		if ((typeof rawCode === "string" && rawCode.trim()) || typeof rawCode === "number") {
 			code = ` (${rawCode})`;
 		}
 	}

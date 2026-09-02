@@ -568,27 +568,31 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 						continue;
 					}
 
-					try {
-						const parsed = JSON.parse(data);
+try {
+					const parsed = JSON.parse(data);
+					throwIfStreamErrorPayload(parsed, "OpenAI");
 
-						// OpenAI-compatible streaming response
-						const choice = (parsed.choices as Record<string, unknown>[] | undefined)?.[0];
-						if (!choice) {
-							continue;
-						}
-
-						const deltaObj = choice.delta as Record<string, unknown> | undefined;
-						if (deltaObj?.content) {
-							const content = String(deltaObj.content);
-							yield { type: "text", text: content };
-						}
-						// Handle finish reason
-						if (choice.finish_reason) {
-							break;
-						}
-					} catch (e) {
-						console.error("[OpenAI Provider] Failed to parse SSE chunk:", e, "data:", data);
+					// OpenAI-compatible streaming response
+					const choice = (parsed.choices as Record<string, unknown>[] | undefined)?.[0];
+					if (!choice) {
+						continue;
 					}
+
+					const deltaObj = choice.delta as Record<string, unknown> | undefined;
+					if (deltaObj?.content) {
+						const content = String(deltaObj.content);
+						yield { type: "text", text: content };
+					}
+					// Handle finish reason
+					if (choice.finish_reason) {
+						break;
+					}
+				} catch (e) {
+					if (e instanceof Error && e.message.startsWith("OpenAI stream error")) {
+						throw e;
+					}
+					console.error("[OpenAI Provider] Failed to parse SSE chunk:", e, "data:", data);
+				}
 				}
 			}
 		} finally {
