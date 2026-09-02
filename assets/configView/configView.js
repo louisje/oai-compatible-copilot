@@ -597,7 +597,7 @@ function renderModels() {
 				<td>${model.pricing ? `$${model.pricing.input} / $${model.pricing.output}` : ""}</td>
 				<td class="action-buttons">
 					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${providerDisabled ? 'disabled title="Provider is disabled"' : ""}>Edit</button>
-					<button class="delete-model-btn danger" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">Delete</button>
+					<button class="delete-model-btn danger" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" title="Delete">🗑️</button>
 				</td>
 			</tr>`;
 		})
