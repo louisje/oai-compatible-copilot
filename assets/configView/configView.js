@@ -7,6 +7,7 @@ const state = {
 	commitModel: "",
 	models: [],
 	disabledProviders: [],
+	hiddenProviders: [],
 	providerKeys: {},
 	providerInfo: {},
 };
@@ -289,6 +290,7 @@ window.addEventListener("message", (event) => {
 				commitModel,
 				models,
 				disabledProviders,
+				hiddenProviders,
 				providerKeys,
 				commitLanguage,
 			} = message.payload;
@@ -304,6 +306,7 @@ window.addEventListener("message", (event) => {
 			};
 			state.models = models || [];
 			state.disabledProviders = disabledProviders || [];
+			state.hiddenProviders = hiddenProviders || [];
 			state.commitModel = commitModel || "";
 			state.providerKeys = providerKeys || {};
 
@@ -365,7 +368,7 @@ function renderProviders() {
 	);
 
 	if (!providers.length) {
-		providerTableBody.innerHTML = '<tr><td colspan="7" class="no-data">No providers</td></tr>';
+		providerTableBody.innerHTML = '<tr><td colspan="8" class="no-data">No providers</td></tr>';
 		// Clear the provider dropdown as well
 		modelProviderInput.innerHTML = '<option value="">Select Provider</option>';
 		return;
@@ -377,12 +380,14 @@ function renderProviders() {
 			const providerModels = state.models.filter((m) => m.owned_by === provider);
 			const firstModel = providerModels[0];
 			const providerEnabled = !state.disabledProviders.some((item) => item.toLowerCase() === provider.toLowerCase());
+			const providerHidden = state.hiddenProviders.some((item) => item.toLowerCase() === provider.toLowerCase());
 			const headersJson = firstModel.headers ? JSON.stringify(firstModel.headers, null, 2) : "";
 
 			return `
 			<tr data-provider="${provider}">
 				<td><input type="text" class="provider-input" data-field="provider" data-original-provider="${provider}" value="${provider}" placeholder="Provider ID" /></td>
 				<td><input type="checkbox" class="provider-input" data-field="enabled" ${providerEnabled ? "checked" : ""} /></td>
+				<td><input type="checkbox" class="provider-input" data-field="hidden" ${providerHidden ? "checked" : ""} title="Hide this provider's models in Model Management" /></td>
 				<td><input type="text" class="provider-input" data-field="baseUrl" value="${firstModel.baseUrl || ""}" placeholder="Base URL" /></td>
 				<td><input type="password" class="provider-input" data-field="apiKey" value="${state.providerKeys[provider] || ""}" placeholder="API Key" /></td>
 				<td>
@@ -476,6 +481,7 @@ function renderProviders() {
 				apiMode: providerData.apiMode || undefined,
 				headers: headers,
 				enabled: providerData.enabled,
+				hidden: providerData.hidden,
 			});
 
 			// Mark this row as saved immediately so the pending sendInit()/renderProviders()
@@ -570,7 +576,14 @@ function restoreUnsavedProviderEdits(pendingEdits) {
 }
 
 function renderModels() {
-	const models = state.models.filter((m) => !m.id.startsWith("__provider__")).sort((a, b) => a.id.localeCompare(b.id));
+	// Hide models of providers marked hidden.
+	const models = state.models
+		.filter(
+			(m) =>
+				!m.id.startsWith("__provider__") &&
+				!state.hiddenProviders.some((item) => item.toLowerCase() === (m.owned_by || "").toLowerCase())
+		)
+		.sort((a, b) => a.id.localeCompare(b.id));
 	if (!models.length) {
 		modelTableBody.innerHTML = '<tr><td colspan="13" class="no-data">No models</td></tr>';
 		return;
@@ -578,13 +591,11 @@ function renderModels() {
 
 	const rows = models
 		.map((model) => {
-			const providerDisabled = state.disabledProviders.some(
-				(provider) => provider.trim().toLowerCase() === model.owned_by.trim().toLowerCase()
-			);
+			const providerDisabled = state.disabledProviders.some((item) => item.toLowerCase() === (model.owned_by || "").toLowerCase());
 			return `
-			<tr class="${providerDisabled ? "provider-disabled-model" : ""}" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">
+			<tr data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}"${providerDisabled ? ' class="model-provider-disabled"' : ""}>
 				<td>${model.id}</td>
-				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${model.enabled !== false ? "checked" : ""} ${providerDisabled ? 'disabled title="Provider is disabled"' : ""} /></td>
+				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${model.enabled !== false ? "checked" : ""} /></td>
 				<td>${model.owned_by}</td>
 				<td>${model.displayName || ""}</td>
 				<td>${model.configId || ""}</td>
@@ -596,7 +607,7 @@ function renderModels() {
 				<td>${model.delay || ""}</td>
 				<td>${model.pricing ? `$${model.pricing.input} / $${model.pricing.output}` : ""}</td>
 				<td class="action-buttons">
-					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${providerDisabled ? 'disabled title="Provider is disabled"' : ""}>Edit</button>
+					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">Edit</button>
 					<button class="delete-model-btn danger" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" title="Delete">🗑️</button>
 				</td>
 			</tr>`;

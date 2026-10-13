@@ -394,6 +394,15 @@
 					"uniqueItems": true,
 					"description": "Provider IDs whose models should be disabled. Matching is case-insensitive."
 				},
+				"oaicopilot.hiddenProviders": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "string"
+					},
+					"uniqueItems": true,
+					"description": "Provider IDs whose models should be hidden in Model Management. Matching is case-insensitive."
+				},
 				"oaicopilot.retry": {
 					"type": "object",
 					"default": {

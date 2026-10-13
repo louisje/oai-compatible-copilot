@@ -19,6 +19,7 @@ interface InitPayload {
 	commitLanguage: string;
 	models: HFModelItem[];
 	disabledProviders: string[];
+	hiddenProviders: string[];
 	providerKeys: Record<string, string>;
 }
 
@@ -38,6 +39,7 @@ interface ExportConfig {
 	commitModel: string;
 	models: HFModelItem[];
 	disabledProviders: string[];
+	hiddenProviders: string[];
 	providerKeys: Record<string, string>;
 	readFileLines: number;
 }
@@ -69,6 +71,7 @@ type IncomingMessage =
 			apiMode?: string;
 			headers?: Record<string, string>;
 			enabled?: boolean;
+			hidden?: boolean;
 	  }
 	| {
 			type: "updateProvider";
@@ -79,6 +82,7 @@ type IncomingMessage =
 			apiMode?: string;
 			headers?: Record<string, string>;
 			enabled?: boolean;
+			hidden?: boolean;
 	  }
 	| { type: "deleteProvider"; provider: string }
 	| { type: "addModel"; model: HFModelItem }
@@ -213,7 +217,8 @@ export class ConfigViewPanel {
 					message.apiKey,
 					message.apiMode,
 					message.headers,
-					message.enabled
+					message.enabled,
+					message.hidden
 				);
 				break;
 			case "deleteProvider":
@@ -267,6 +272,7 @@ export class ConfigViewPanel {
 		const baseUrl = config.get<string>("oaicopilot.baseUrl", "https://api.openai.com/v1");
 		const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
 		const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
+		const hiddenProviders = config.get<string[]>("oaicopilot.hiddenProviders", []);
 
 		const apiKey = (await this.secrets.get("oaicopilot.apiKey")) ?? "";
 		const providerKeys: Record<string, string> = {};
@@ -314,6 +320,7 @@ export class ConfigViewPanel {
 			commitLanguage,
 			models,
 			disabledProviders,
+			hiddenProviders,
 			providerKeys,
 		};
 		this.panel.webview.postMessage({ type: "init", payload });
@@ -443,7 +450,8 @@ export class ConfigViewPanel {
 		apiKey?: string,
 		apiMode?: string,
 		headers?: Record<string, string>,
-		enabled = true
+		enabled = true,
+		hidden = false
 	) {
 		const trimmedProvider = provider.trim();
 		if (!trimmedProvider) {
@@ -515,6 +523,14 @@ export class ConfigViewPanel {
 			updatedDisabledProviders.push(trimmedProvider);
 		}
 		await config.update("oaicopilot.disabledProviders", updatedDisabledProviders, vscode.ConfigurationTarget.Global);
+		const hiddenProviders = config.get<string[]>("oaicopilot.hiddenProviders", []);
+		const updatedHiddenProviders = hiddenProviders.filter(
+			(item) => item.toLowerCase() !== normalizedOriginalProvider && item.toLowerCase() !== normalizedProvider
+		);
+		if (hidden) {
+			updatedHiddenProviders.push(trimmedProvider);
+		}
+		await config.update("oaicopilot.hiddenProviders", updatedHiddenProviders, vscode.ConfigurationTarget.Global);
 		vscode.window.showInformationMessage(
 			isRenaming
 				? `Provider ${trimmedOriginalProvider} has been renamed to ${trimmedProvider}.`
@@ -546,6 +562,12 @@ export class ConfigViewPanel {
 
 		await config.update("oaicopilot.models", filteredModels, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.disabledProviders", filteredDisabledProviders, vscode.ConfigurationTarget.Global);
+		const hiddenProviders = config.get<string[]>("oaicopilot.hiddenProviders", []);
+		await config.update(
+			"oaicopilot.hiddenProviders",
+			hiddenProviders.filter((item) => item.toLowerCase() !== normalizedProvider),
+			vscode.ConfigurationTarget.Global
+		);
 		vscode.window.showInformationMessage(`Provider ${provider} and all its models have been deleted.`);
 		// Send refresh signal to frontend
 		await this.sendInit();
@@ -682,6 +704,7 @@ export class ConfigViewPanel {
 				commitModel,
 				models,
 				disabledProviders,
+				hiddenProviders: config.get<string[]>("oaicopilot.hiddenProviders", []),
 				readFileLines,
 				providerKeys,
 			};
@@ -749,6 +772,11 @@ export class ConfigViewPanel {
 			await config.update(
 				"oaicopilot.disabledProviders",
 				importData.disabledProviders ?? [],
+				vscode.ConfigurationTarget.Global
+			);
+			await config.update(
+				"oaicopilot.hiddenProviders",
+				importData.hiddenProviders ?? [],
 				vscode.ConfigurationTarget.Global
 			);
 

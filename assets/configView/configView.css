@@ -226,16 +226,6 @@ tr:hover {
 	background: rgba(255, 255, 255, 0.05);
 }
 
-tr.provider-disabled-model,
-tr.provider-disabled-model:hover {
-	background: rgba(127, 127, 127, 0.12);
-	color: var(--vscode-foreground);
-}
-
-tr.provider-disabled-model td:not(.action-buttons) {
-	opacity: 0.65;
-}
-
 button:disabled,
 input:disabled {
 	cursor: not-allowed;
@@ -398,4 +388,8 @@ button:not(.secondary):not(.danger) {
 	margin-bottom: 6px;
 	line-height: 1.4;
 	padding: 4px 0;
+}
+
+tr.model-provider-disabled {
+	opacity: 0.5;
 }
