@@ -29,6 +29,13 @@ class Logger {
 		this._initialized = true;
 	}
 
+	verbose(tag: string, data: Record<string, unknown>): void {
+		if (!this._outputChannel || this._outputChannel.logLevel > vscode.LogLevel.Trace) {
+			return;
+		}
+		this.write("verbose", tag, data);
+	}
+
 	debug(tag: string, data: Record<string, unknown>): void {
 		if (!this._outputChannel || this._outputChannel.logLevel > vscode.LogLevel.Debug) {
 			return;
@@ -109,7 +116,11 @@ class Logger {
 		return path.join(this._logDir, `oaicopilot-${dateStr}.log`);
 	}
 
-	private write(level: "debug" | "info" | "warn" | "error", tag: string, data: Record<string, unknown>): void {
+	private write(
+		level: "verbose" | "debug" | "info" | "warn" | "error",
+		tag: string,
+		data: Record<string, unknown>
+	): void {
 		if (!this._initialized) {
 			return;
 		}
@@ -127,7 +138,7 @@ class Logger {
 
 		// Use the LogOutputChannel's own level methods so its built-in log level
 		// filtering, colouring, and "Help: Open Logs Folder" integration apply.
-		this._outputChannel?.[level](`[${tag}] ${JSON.stringify(sanitizedData)}`);
+		this._outputChannel?.[level === "verbose" ? "trace" : level](`[${tag}] ${JSON.stringify(sanitizedData)}`);
 
 		try {
 			fs.appendFileSync(filePath, line, "utf8");

@@ -228,6 +228,12 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				headers: logger.sanitizeHeaders(requestHeaders as Record<string, string>),
 			});
 			logger.debug("request.messages.origin", {
+				messages: messages.map((m) => ({
+					role: m.role,
+					contentLength: JSON.stringify(m.content).length,
+				})),
+			});
+			logger.verbose("request.messages.origin", {
 				messages: messages,
 			});
 			if (apiMode === "ollama") {
@@ -245,7 +251,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 				// send Ollama chat request with retry
 				const url = `${BASE_URL.replace(/\/+$/, "")}/api/chat`;
-				logger.debug("request.body", {
+				logger.verbose("request.body", {
 					url: url,
 					requestBody: ollamaRequestBody,
 				});
@@ -293,7 +299,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				const url = normalizedBaseUrl.endsWith("/v1")
 					? `${normalizedBaseUrl}/messages`
 					: `${normalizedBaseUrl}/v1/messages`;
-				logger.debug("request.body", { url, requestBody });
+				logger.verbose("request.body", { url, requestBody });
 				const response = await executeWithRetry(async () => {
 					const res = await fetch(url, {
 						method: "POST",
@@ -361,7 +367,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				}
 				// send Responses API request with retry
 				const url = `${normalizedBaseUrl}/responses`;
-				logger.debug("request.body", { url, requestBody });
+				logger.verbose("request.body", { url, requestBody });
 
 				// If the user explicitly set `previous_response_id` via `extra`, don't apply stateful slicing.
 				let addedPreviousResponseId = false;
@@ -464,7 +470,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				requestBody = geminiApi.prepareRequestBody(requestBody, um, options);
 
 				const url = buildGeminiGenerateContentUrl(BASE_URL, parsedModelId.baseId, true);
-				logger.debug("request.body", { url, requestBody });
+				logger.verbose("request.body", { url, requestBody });
 				if (!url) {
 					throw new Error("Invalid Gemini base URL configuration.");
 				}
@@ -509,7 +515,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 				// send chat request with retry
 				const url = `${BASE_URL.replace(/\/+$/, "")}/chat/completions`;
-				logger.debug("request.body", { url, requestBody });
+				logger.verbose("request.body", { url, requestBody });
 				const response = await executeWithRetry(async () => {
 					const res = await fetch(url, {
 						method: "POST",

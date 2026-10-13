@@ -18,6 +18,10 @@ const DEFAULT_CONTEXT_LENGTH = 128000;
 const DEFAULT_MAX_TOKENS = 4096;
 const EXTENSION_LABEL = "OAICopilot";
 
+// Only log models.loaded when the model list actually changes; VS Code calls
+// provideLanguageModelChatInformation repeatedly (picker refresh, new chat, etc.).
+let lastModelsSignature = "";
+
 /**
  * Get the list of available language models contributed by this provider
  * @param options Options which specify the calling context of this function
@@ -148,7 +152,11 @@ export async function prepareLanguageModelChatInformation(
 		});
 	}
 
-	logger.info("models.loaded", { count: infos.length, source: userModels && userModels.length > 0 ? "config" : "api" });
+	const signature = JSON.stringify(infos.map((i) => i.id));
+	if (signature !== lastModelsSignature) {
+		lastModelsSignature = signature;
+		logger.info("models.loaded", { count: infos.length, source: userModels && userModels.length > 0 ? "config" : "api" });
+	}
 	return infos;
 }
 
