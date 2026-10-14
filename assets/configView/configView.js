@@ -15,6 +15,115 @@ const state = {
 	providerInfo: {},
 };
 
+// Independent sort settings for the two management tables. Kept in webview state
+// across a panel reload, without changing the order saved in workspace settings.
+const savedSort = vscode.getState()?.tableSort || {};
+const tableSort = {
+	providerTable: savedSort.providerTable || { key: "provider", direction: "asc" },
+	modelTable: savedSort.modelTable || { key: "id", direction: "asc" },
+};
+const sortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+function compareSortValues(a, b) {
+	const emptyA = a === undefined || a === null || a === "";
+	const emptyB = b === undefined || b === null || b === "";
+	// Empty cells always come last, regardless of the direction.
+	if (emptyA !== emptyB) {
+		return emptyA ? 1 : -1;
+	}
+	if (emptyA) {
+		return 0;
+	}
+	if (typeof a === "number" && typeof b === "number") {
+		return a - b;
+	}
+	return sortCollator.compare(String(a), String(b));
+}
+
+function sortRows(rows, table, getValue, fallback) {
+	const { key, direction } = tableSort[table];
+	return rows
+		.map((row, index) => ({ row, index }))
+		.sort((a, b) => {
+			const first = getValue(a.row, key);
+			const second = getValue(b.row, key);
+			const isEmpty = (v) => v === undefined || v === null || v === "";
+			let result = compareSortValues(first, second);
+			if (!isEmpty(first) && !isEmpty(second) && direction === "desc") {
+				result *= -1;
+			}
+			return result || sortCollator.compare(fallback(a.row), fallback(b.row)) || a.index - b.index;
+		})
+		.map(({ row }) => row);
+}
+
+function renderSortIndicators(table) {
+	const { key, direction } = tableSort[table];
+	document.querySelectorAll(`#${table} thead th[data-sort-key]`).forEach((header) => {
+		header.setAttribute(
+			"aria-sort",
+			header.dataset.sortKey === key ? (direction === "asc" ? "ascending" : "descending") : "none"
+		);
+		const button = header.querySelector("button");
+		button.title = `Sort by ${button.textContent.trim()} (${header.dataset.sortKey === key ? direction : "asc"})`;
+	});
+}
+
+for (const table of ["providerTable", "modelTable"]) {
+	document.querySelectorAll(`#${table} thead .table-sort-button`).forEach((button) => {
+		button.addEventListener("click", () => {
+			const key = button.dataset.sortKey;
+			tableSort[table] = {
+				key,
+				direction: tableSort[table].key === key && tableSort[table].direction === "asc" ? "desc" : "asc",
+			};
+			vscode.setState({ ...vscode.getState(), tableSort });
+			if (table === "providerTable") {
+				renderProviders();
+			} else {
+				renderModels();
+			}
+		});
+	});
+	renderSortIndicators(table);
+}
+
+function providerSortValue(provider, key) {
+	const models = state.manualModels.filter((m) => m.owned_by === provider && !m.chatgptAuth);
+	const first = models[0] || {};
+	switch (key) {
+		case "provider":
+			return provider;
+		case "enabled":
+			return !state.disabledProviders.some((p) => p.toLowerCase() === provider.toLowerCase()) ? 1 : 0;
+		case "hidden":
+			return state.hiddenProviders.some((p) => p.toLowerCase() === provider.toLowerCase()) ? 1 : 0;
+		case "baseUrl":
+			return first.baseUrl;
+		case "apiMode":
+			return first.apiMode;
+		default:
+			return "";
+	}
+}
+
+function modelSortValue(model, key) {
+	switch (key) {
+		case "auth":
+			return model.chatgptAuth ? "ChatGPT" : "API Key";
+		case "maxTokens":
+			return model.max_completion_tokens ?? model.max_tokens ?? model.catalog_max_output_tokens;
+		case "price":
+			return model.pricing?.input;
+		case "enabled":
+			return model.enabled !== false ? 1 : 0;
+		case "vision":
+			return model.vision ? 1 : 0;
+		default:
+			return model[key];
+	}
+}
+
 // Store the action to be performed after confirmation
 const pendingConfirmations = new Map();
 
@@ -474,7 +583,9 @@ function renderProviders() {
 				.map((m) => m.owned_by)
 				.filter(Boolean)
 		)
-	).sort((a, b) => a.localeCompare(b));
+	);
+	const sortedProviders = sortRows(providers, "providerTable", providerSortValue, (provider) => provider);
+	renderSortIndicators("providerTable");
 
 	if (!providers.length) {
 		providerTableBody.innerHTML = '<tr><td colspan="8" class="no-data">No providers</td></tr>';
@@ -485,7 +596,7 @@ function renderProviders() {
 		return;
 	}
 
-	const rows = providers
+	const rows = sortedProviders
 		.map((provider) => {
 			// Get the provider's configuration information
 			const providerModels = state.manualModels.filter((m) => m.owned_by === provider && !m.chatgptAuth);
@@ -691,19 +802,19 @@ function restoreUnsavedProviderEdits(pendingEdits) {
 
 function renderModels() {
 	// Hide models of providers marked hidden.
-	const models = state.models
-		.filter(
-			(m) =>
-				!m.id.startsWith("__provider__") &&
-				!state.hiddenProviders.some((item) => item.toLowerCase() === (m.owned_by || "").toLowerCase())
-		)
-		.sort((a, b) => a.id.localeCompare(b.id));
+	const models = state.models.filter(
+		(m) =>
+			!m.id.startsWith("__provider__") &&
+			!state.hiddenProviders.some((item) => item.toLowerCase() === (m.owned_by || "").toLowerCase())
+	);
+	const sortedModels = sortRows(models, "modelTable", modelSortValue, (model) => modelKey(model));
+	renderSortIndicators("modelTable");
 	if (!models.length) {
 		modelTableBody.innerHTML = '<tr><td colspan="14" class="no-data">No models</td></tr>';
 		return;
 	}
 
-	const rows = models
+	const rows = sortedModels
 		.map((model) => {
 			const providerDisabled = state.disabledProviders.some(
 				(item) => item.toLowerCase() === (model.owned_by || "").toLowerCase()

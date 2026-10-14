@@ -445,3 +445,45 @@ tr.model-provider-disabled {
 	white-space: nowrap;
 	font-size: 12px;
 }
+
+/* Header sorting is a visual affordance; sorting never changes the stored models. */
+/* Override the generic non-secondary button rule, including hover/active. */
+#providerTable .table-sort-button,
+#modelTable .table-sort-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 0;
+	margin: 0;
+	border: 0;
+	border-radius: 2px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-weight: inherit;
+	text-align: left;
+	box-shadow: none;
+}
+#providerTable .table-sort-button:hover,
+#modelTable .table-sort-button:hover {
+	transform: none;
+	box-shadow: none;
+	text-decoration: underline;
+}
+#providerTable .table-sort-button:focus-visible,
+#modelTable .table-sort-button:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 3px;
+}
+.sort-indicator::after {
+	content: "↕";
+	opacity: 0.35;
+}
+th[aria-sort="ascending"] .sort-indicator::after {
+	content: "▲";
+	opacity: 1;
+}
+th[aria-sort="descending"] .sort-indicator::after {
+	content: "▼";
+	opacity: 1;
+}

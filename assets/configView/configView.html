@@ -135,12 +135,32 @@
 				<table id="providerTable">
 					<thead>
 						<tr>
-							<th>Provider ID</th>
-							<th>Enabled</th>
-							<th title="Hide this provider's models in Model Management">Hide</th>
-							<th>Base URL</th>
+							<th data-sort-key="provider" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="provider" title="Sort by Provider ID">
+									Provider ID<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="enabled" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="enabled" title="Sort by Enabled">
+									Enabled<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th title="Hide this provider's models in Model Management" data-sort-key="hidden" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="hidden" title="Sort by Hide">
+									Hide<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="baseUrl" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="baseUrl" title="Sort by Base URL">
+									Base URL<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
 							<th>API Key</th>
-							<th>API Mode</th>
+							<th data-sort-key="apiMode" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="apiMode" title="Sort by API Mode">
+									API Mode<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
 							<th>Custom Headers (JSON)</th>
 							<th>Actions</th>
 						</tr>
@@ -164,19 +184,86 @@
 				<table id="modelTable">
 					<thead>
 						<tr>
-							<th>Model ID</th>
-							<th>Enabled</th>
-							<th>Provider ID</th>
-							<th>Authentication</th>
-							<th>Display Name</th>
-							<th>Config ID</th>
-							<th>Context Length</th>
-							<th>Max Tokens</th>
-							<th>Supports Vision</th>
-							<th title="Temperature">🌡️</th>
-							<th>TopP</th>
-							<th>Delay (ms)</th>
-							<th>Price ($/1M In/Out)</th>
+							<th data-sort-key="id" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="id" title="Sort by Model ID">
+									Model ID<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="enabled" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="enabled" title="Sort by Enabled">
+									Enabled<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="owned_by" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="owned_by" title="Sort by Provider ID">
+									Provider ID<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="auth" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="auth" title="Sort by Authentication">
+									Authentication<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="displayName" aria-sort="none">
+								<button
+									type="button"
+									class="table-sort-button"
+									data-sort-key="displayName"
+									title="Sort by Display Name"
+								>
+									Display Name<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="configId" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="configId" title="Sort by Config ID">
+									Config ID<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="context_length" aria-sort="none">
+								<button
+									type="button"
+									class="table-sort-button"
+									data-sort-key="context_length"
+									title="Sort by Context Length"
+								>
+									Context Length<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="maxTokens" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="maxTokens" title="Sort by Max Tokens">
+									Max Tokens<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="vision" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="vision" title="Sort by Supports Vision">
+									Supports Vision<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th title="Temperature" data-sort-key="temperature" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="temperature" title="Sort by 🌡️">
+									🌡️<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="top_p" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="top_p" title="Sort by TopP">
+									TopP<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="delay" aria-sort="none">
+								<button type="button" class="table-sort-button" data-sort-key="delay" title="Sort by Delay (ms)">
+									Delay (ms)<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
+							<th data-sort-key="price" aria-sort="none">
+								<button
+									type="button"
+									class="table-sort-button"
+									data-sort-key="price"
+									title="Sort by Price ($/1M In/Out)"
+								>
+									Price ($/1M In/Out)<span class="sort-indicator" aria-hidden="true"></span>
+								</button>
+							</th>
 							<th>Actions</th>
 						</tr>
 					</thead>
