@@ -10,7 +10,17 @@
 	<body>
 		<section id="globalConfigSection">
 			<div class="section-header">
-				<h2>Global Configuration</h2>
+				<h2>
+					<button
+						type="button"
+						class="section-toggle"
+						aria-expanded="true"
+						aria-controls="globalConfigSection"
+						title="Collapse Global Configuration"
+					>
+						<span class="section-chevron" aria-hidden="true">▾</span>Global Configuration
+					</button>
+				</h2>
 				<div class="section-actions">
 					<button id="exportConfig" class="secondary">Export</button>
 					<button id="importConfig" class="secondary">Import</button>
@@ -106,7 +116,17 @@
 
 		<section id="chatgptSubscriptionSection">
 			<div class="section-header">
-				<h2>ChatGPT Subscription</h2>
+				<h2>
+					<button
+						type="button"
+						class="section-toggle"
+						aria-expanded="true"
+						aria-controls="chatgptSubscriptionSection"
+						title="Collapse ChatGPT Subscription"
+					>
+						<span class="section-chevron" aria-hidden="true">▾</span>ChatGPT Subscription
+					</button>
+				</h2>
 				<span id="chatgptStatus" class="subscription-status" role="status" aria-live="polite"
 					>Checking connection…</span
 				>
@@ -125,7 +145,17 @@
 
 		<section id="providerManagementSection">
 			<div class="section-header">
-				<h2>Provider Management</h2>
+				<h2>
+					<button
+						type="button"
+						class="section-toggle"
+						aria-expanded="true"
+						aria-controls="providerManagementSection"
+						title="Collapse Provider Management"
+					>
+						<span class="section-chevron" aria-hidden="true">▾</span>Provider Management
+					</button>
+				</h2>
 				<div class="section-actions">
 					<button id="addProvider">Add Provider</button>
 					<button id="refreshProviders" class="secondary">Refresh</button>
@@ -174,7 +204,17 @@
 
 		<section id="modelManagementSection">
 			<div class="section-header">
-				<h2>Model Management</h2>
+				<h2>
+					<button
+						type="button"
+						class="section-toggle"
+						aria-expanded="true"
+						aria-controls="modelManagementSection"
+						title="Collapse Model Management"
+					>
+						<span class="section-chevron" aria-hidden="true">▾</span>Model Management
+					</button>
+				</h2>
 				<div class="section-actions">
 					<button id="addModel">Add Model</button>
 					<button id="refreshModels" class="secondary">Refresh</button>

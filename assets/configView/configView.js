@@ -124,6 +124,31 @@ function modelSortValue(model, key) {
 	}
 }
 
+// Collapse state stays in the webview and does not modify extension settings.
+const collapsibleSections = [
+	"globalConfigSection",
+	"chatgptSubscriptionSection",
+	"providerManagementSection",
+	"modelManagementSection",
+];
+const collapsedSections = { ...(vscode.getState()?.collapsedSections || {}) };
+function applySectionState(section, button) {
+	const collapsed = collapsedSections[section.id] === true;
+	section.classList.toggle("is-collapsed", collapsed);
+	button.setAttribute("aria-expanded", String(!collapsed));
+	button.title = `${collapsed ? "Expand" : "Collapse"} ${button.textContent.trim()}`;
+}
+for (const id of collapsibleSections) {
+	const section = document.getElementById(id);
+	const button = section.querySelector(".section-toggle");
+	applySectionState(section, button);
+	button.addEventListener("click", () => {
+		collapsedSections[id] = !collapsedSections[id];
+		applySectionState(section, button);
+		vscode.setState({ ...vscode.getState(), collapsedSections });
+	});
+}
+
 // Store the action to be performed after confirmation
 const pendingConfirmations = new Map();
 
