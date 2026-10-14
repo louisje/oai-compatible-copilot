@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { ChatGPTAuth } from "./chatgpt/auth";
+import { ChatGPTModelCatalog } from "./chatgpt/catalog";
 import { HuggingFaceChatModelProvider } from "./provider";
 import type { HFModelItem } from "./types";
 import { initStatusBar } from "./statusBar";
@@ -16,7 +18,50 @@ export function activate(context: vscode.ExtensionContext) {
 	TokenizerManager.initialize(context.extensionPath);
 
 	const tokenCountStatusBarItem: vscode.StatusBarItem = initStatusBar(context);
-	const provider = new HuggingFaceChatModelProvider(context.secrets, tokenCountStatusBarItem);
+	const chatgptAuth = new ChatGPTAuth(context.secrets);
+	const chatgptCatalog = new ChatGPTModelCatalog(chatgptAuth, context.globalState);
+	const provider = new HuggingFaceChatModelProvider(
+		context.secrets,
+		tokenCountStatusBarItem,
+		chatgptAuth,
+		chatgptCatalog
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand("oaicopilot.chatgptLogin", async () => {
+			try {
+				await chatgptAuth.login();
+				await chatgptCatalog.invalidate();
+				const models = await chatgptCatalog.list();
+				vscode.window.showInformationMessage(
+					`ChatGPT subscription connected. Discovered ${models.length} Codex models; reopen the model picker to refresh.`
+				);
+			} catch (error) {
+				vscode.window.showErrorMessage(`ChatGPT sign-in failed: ${String(error)}`);
+			} finally {
+				await ConfigViewPanel.currentPanel?.refresh();
+			}
+		}),
+		vscode.commands.registerCommand("oaicopilot.chatgptRefreshModels", async () => {
+			if (!(await chatgptCatalog.isConnected())) {
+				vscode.window.showWarningMessage("Sign in to ChatGPT before refreshing Codex models.");
+				return;
+			}
+			const models = await chatgptCatalog.list(true);
+			if (models.length) {
+				vscode.window.showInformationMessage(
+					`Loaded ${models.length} ChatGPT Codex models. Reopen the model picker to refresh.`
+				);
+			} else {
+				vscode.window.showWarningMessage("Could not load Codex models. Check the OAICopilot logs.");
+			}
+			await ConfigViewPanel.currentPanel?.refresh();
+		}),
+		vscode.commands.registerCommand("oaicopilot.chatgptLogout", async () => {
+			await chatgptAuth.logout();
+			await chatgptCatalog.invalidate();
+			vscode.window.showInformationMessage("ChatGPT subscription disconnected. Reopen the model picker to refresh.");
+		})
+	);
 	// Register the Hugging Face provider under the vendor id used in package.json
 	vscode.lm.registerLanguageModelChatProvider("oaicopilot", provider);
 
@@ -103,7 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("oaicopilot.openConfig", async () => {
-			ConfigViewPanel.openPanel(context.extensionUri, context.secrets);
+			ConfigViewPanel.openPanel(context.extensionUri, context.secrets, chatgptCatalog);
 		})
 	);
 

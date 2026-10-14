@@ -26,14 +26,20 @@ export interface HFModelItem {
 	configId?: string;
 	displayName?: string;
 	baseUrl?: string;
+	/** Authenticate this model using the local ChatGPT subscription OAuth connection. Requires openai-responses mode. */
+	chatgptAuth?: boolean;
 	providers?: HFProvider[];
 	architecture?: HFArchitecture;
 	context_length?: number;
 	vision?: boolean;
 	max_tokens?: number;
+	/** Inferred catalog upper bound for the model picker; not sent as a request parameter. */
+	catalog_max_output_tokens?: number;
 	// OpenAI new standard parameter
 	max_completion_tokens?: number;
 	reasoning_effort?: string;
+	/** Account-discovered supported reasoning levels and descriptions. */
+	reasoning_efforts?: Array<{ effort: string; description?: string }>;
 	enable_thinking?: boolean;
 	thinking_budget?: number;
 	// New thinking configuration for Zai provider

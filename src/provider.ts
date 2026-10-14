@@ -1,3 +1,6 @@
+import { ChatGPTAuth, CODEX_RESPONSES_URL } from "./chatgpt/auth";
+import { ChatGPTModelCatalog } from "./chatgpt/catalog";
+import { resolveAvailableModels } from "./chatgpt/resolve";
 import * as vscode from "vscode";
 import {
 	CancellationToken,
@@ -13,7 +16,7 @@ import type { HFModelItem } from "./types";
 
 import type { OllamaRequestBody } from "./ollama/ollamaTypes";
 
-import { parseModelId, createRetryConfig, executeWithRetry, getEnabledUserModels, toAbortSignal } from "./utils";
+import { parseModelId, createRetryConfig, executeWithRetry, toAbortSignal } from "./utils";
 
 import { prepareLanguageModelChatInformation } from "./provideModel";
 import { countMessageTokens } from "./provideToken";
@@ -46,7 +49,9 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 	 */
 	constructor(
 		private readonly secrets: vscode.SecretStorage,
-		private readonly statusBarItem: vscode.StatusBarItem
+		private readonly statusBarItem: vscode.StatusBarItem,
+		private readonly chatgptAuth: ChatGPTAuth,
+		private readonly chatgptCatalog: ChatGPTModelCatalog
 	) {}
 
 	/**
@@ -59,7 +64,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 		options: { silent: boolean },
 		_token: CancellationToken
 	): Promise<LanguageModelChatInformation[]> {
-		return prepareLanguageModelChatInformation({ silent: options.silent ?? false }, _token, this.secrets);
+		return prepareLanguageModelChatInformation({ silent: options.silent ?? false }, _token, this.secrets, this.chatgptCatalog);
 	}
 
 	/**
@@ -75,11 +80,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 		_token: CancellationToken
 	): Promise<number> {
 		// Resolve model-specific configuration for accurate token counting
-		const config = vscode.workspace.getConfiguration();
-		const userModels = getEnabledUserModels(
-			config.get<unknown>("oaicopilot.models", []),
-			config.get<string[]>("oaicopilot.disabledProviders", [])
-		);
+		const userModels = await resolveAvailableModels(this.chatgptCatalog);
 		const parsedModelId = parseModelId(model.id);
 		const um =
 			userModels.find(
@@ -132,10 +133,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 		try {
 			// get model config from user settings
 			const config = vscode.workspace.getConfiguration();
-			const userModels = getEnabledUserModels(
-				config.get<unknown>("oaicopilot.models", []),
-				config.get<string[]>("oaicopilot.disabledProviders", [])
-			);
+			const userModels = await resolveAvailableModels(this.chatgptCatalog);
 
 			// Parse model ID to handle config ID
 			const parsedModelId = parseModelId(model.id);
@@ -161,7 +159,11 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 			// Check if using Ollama native API mode
 			const apiMode = um?.apiMode ?? "openai";
-			const baseUrl = um?.baseUrl || config.get<string>("oaicopilot.baseUrl", "");
+			const chatgptSubscription = um.chatgptAuth === true;
+			if (chatgptSubscription && apiMode !== "openai-responses") {
+				throw new Error("ChatGPT subscription requires apiMode: openai-responses");
+			}
+			const baseUrl = chatgptSubscription ? "https://chatgpt.com/backend-api/codex" : (um?.baseUrl || config.get<string>("oaicopilot.baseUrl", ""));
 
 			logger.info("request.start", {
 				modelId: model.id,
@@ -204,7 +206,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 			// Get API key for the model's provider
 			const provider = um?.owned_by;
 			const useGenericKey = !um?.baseUrl;
-			const modelApiKey = await this.ensureApiKey(useGenericKey, provider);
+			const modelApiKey = chatgptSubscription ? "chatgpt-oauth" : await this.ensureApiKey(useGenericKey, provider);
 			if (!modelApiKey) {
 				logger.warn("apiKey.missing", {
 					provider: provider ?? "",
@@ -223,7 +225,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 			const retryConfig = createRetryConfig();
 
 			// prepare headers with custom headers if specified
-			const requestHeaders = CommonApi.prepareHeaders(modelApiKey, apiMode, um?.headers);
+			const requestHeaders = CommonApi.prepareHeaders(modelApiKey, apiMode, chatgptSubscription ? undefined : um?.headers);
 			logger.debug("request.headers", {
 				headers: logger.sanitizeHeaders(requestHeaders as Record<string, string>),
 			});
@@ -345,6 +347,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 				const canUsePreviousResponseId =
 					!!marker?.marker &&
+					!chatgptSubscription &&
 					!this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.has(normalizedBaseUrl) &&
 					Array.isArray(deltaInput) &&
 					deltaInput.length > 0;
@@ -359,6 +362,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				};
 
 				requestBody = openaiResponsesApi.prepareRequestBody(requestBody, um, options);
+				if (chatgptSubscription) { requestBody.store = false; }
 
 				// Add prompt_cache_key to enable OpenAI prompt caching.
 				// Without this parameter, cached_tokens is always 0 even with identical requests.
@@ -366,7 +370,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 					requestBody.prompt_cache_key = `oaicopilot-${parsedModelId.baseId}`;
 				}
 				// send Responses API request with retry
-				const url = `${normalizedBaseUrl}/responses`;
+				const url = chatgptSubscription ? CODEX_RESPONSES_URL : `${normalizedBaseUrl}/responses`;
 				logger.verbose("request.body", { url, requestBody });
 
 				// If the user explicitly set `previous_response_id` via `extra`, don't apply stateful slicing.
@@ -382,7 +386,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 					await executeWithRetry(async () => {
 						const res = await fetch(url, {
 							method: "POST",
-							headers: requestHeaders,
+							headers: chatgptSubscription ? { ...requestHeaders, ...await this.chatgptAuth.getHeaders() } : requestHeaders,
 							body: JSON.stringify(body),
 							signal: toAbortSignal(token),
 						});
@@ -421,6 +425,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 						stream: true,
 					};
 					fallbackBody = openaiResponsesApi.prepareRequestBody(fallbackBody, um, options);
+					if (chatgptSubscription) { fallbackBody.store = false; }
 					delete fallbackBody.previous_response_id;
 					response = await sendRequest(fallbackBody);
 				}

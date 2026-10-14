@@ -13,6 +13,8 @@ import { VersionManager } from "./versionManager";
 import { fetchGeminiModels } from "./gemini/geminiApi";
 import { fetchOllamaModels } from "./ollama/ollamaApi";
 import { logger } from "./logger";
+import { ChatGPTModelCatalog } from "./chatgpt/catalog";
+import { resolveAvailableModels } from "./chatgpt/resolve";
 
 const DEFAULT_CONTEXT_LENGTH = 128000;
 const DEFAULT_MAX_TOKENS = 4096;
@@ -31,21 +33,24 @@ let lastModelsSignature = "";
 export async function prepareLanguageModelChatInformation(
 	options: { silent: boolean },
 	_token: CancellationToken,
-	secrets: vscode.SecretStorage
+	secrets: vscode.SecretStorage,
+	chatgptCatalog?: ChatGPTModelCatalog
 ): Promise<LanguageModelChatInformation[]> {
 	// Check for user-configured models first
 	const config = vscode.workspace.getConfiguration();
 	const configuredModels = config.get<unknown>("oaicopilot.models", []);
-	const userModels = getEnabledUserModels(configuredModels, config.get<string[]>("oaicopilot.disabledProviders", []));
+	const userModels = chatgptCatalog
+		? await resolveAvailableModels(chatgptCatalog)
+		: getEnabledUserModels(configuredModels, config.get<string[]>("oaicopilot.disabledProviders", []));
 
 	let infos: ModelPickerChatInformation[];
-	if (Array.isArray(configuredModels) && configuredModels.length > 0) {
+	if ((Array.isArray(configuredModels) && configuredModels.length > 0) || userModels.length > 0) {
 		// Return user-provided models directly
 		infos = userModels
 			.filter((m) => !m.id.startsWith("__provider__"))
 			.map((m) => {
 				const contextLen = m?.context_length ?? DEFAULT_CONTEXT_LENGTH;
-				const maxOutput = m?.max_completion_tokens ?? m?.max_tokens ?? DEFAULT_MAX_TOKENS;
+				const maxOutput = m?.max_completion_tokens ?? m?.max_tokens ?? m?.catalog_max_output_tokens ?? DEFAULT_MAX_TOKENS;
 				const maxInput = Math.max(1, contextLen - maxOutput);
 
 				// Use configId when present so each model configuration stays distinct.
@@ -66,7 +71,7 @@ export async function prepareLanguageModelChatInformation(
 					isUserSelectable: true,
 					isBYOK: true,
 					...(reasoningEffort
-						? { configurationSchema: createReasoningEffortConfigurationSchema(reasoningEffort) }
+						? { configurationSchema: createReasoningEffortConfigurationSchema(reasoningEffort, m.reasoning_efforts) }
 						: {}),
 					...buildPricingPickerFields(m.pricing),
 					capabilities: {
@@ -75,6 +80,9 @@ export async function prepareLanguageModelChatInformation(
 					},
 				} satisfies ModelPickerChatInformation;
 			});
+	} else if (chatgptCatalog && await chatgptCatalog.isConnected()) {
+		// Signed in, but Codex discovery failed: do not ask for an unrelated API key.
+		infos = [];
 	} else {
 		// Fallback: Fetch models from API
 		const apiKey = await ensureApiKey(options.silent, secrets);
@@ -155,7 +163,7 @@ export async function prepareLanguageModelChatInformation(
 	const signature = JSON.stringify(infos.map((i) => i.id));
 	if (signature !== lastModelsSignature) {
 		lastModelsSignature = signature;
-		logger.info("models.loaded", { count: infos.length, source: userModels && userModels.length > 0 ? "config" : "api" });
+		logger.info("models.loaded", { count: infos.length, source: userModels.length > 0 ? "configured-or-chatgpt" : "api" });
 	}
 	return infos;
 }

@@ -468,3 +468,33 @@ Thanks to all the people who contribute.
 ## Support & License
 - Open issues: https://github.com/JohnnyZ93/oai-compatible-copilot/issues
 - License: MIT License Copyright (c) 2025 Johnny Zhao
+
+### ChatGPT subscription (experimental)
+
+Sign in using **OAICopilot: Sign in to ChatGPT Subscription** from the VS Code Command Palette, then authorize OpenAI in your system browser.
+
+**No model configuration is required.** After login, the extension reads the account-scoped Codex catalog from `https://chatgpt.com/backend-api/codex/models` and automatically makes visible, API-compatible models available in the Copilot Model Picker. The following values are populated automatically where available:
+
+- Model ID, display name, context window, supported reasoning effort options and default, image-input support.
+- Maximum output limit **for display** is supplemented from the public `models.dev` catalog, when available. If missing, the picker falls back to 4,096; the extension does **not** send an inferred output cap with requests.
+- Models are cached for 30 minutes (public supplementary metadata for 24 hours), with HTTP ETag support and account-scoped cache isolation.
+
+The existing `oaicopilot.models` configuration remains intact. You can override an auto-discovered model by adding a ChatGPT entry with the same ID:
+
+```json
+{
+  "id": "gpt-6-sol",
+  "owned_by": "chatgpt",
+  "chatgptAuth": true,
+  "context_length": 200000,
+  "reasoning_effort": "high"
+}
+```
+
+The example model name is illustrative; available models come from your authenticated catalog. Overrides take precedence over discovered metadata. You can set `enabled: false` to hide that discovered model. Other models using API keys continue to work independently; generated ChatGPT model IDs include the `::chatgpt` configuration suffix to avoid collisions.
+
+The **OAICopilot: Open Configuration UI** window also includes a **ChatGPT Subscription** section with sign-in, status, refresh, and sign-out controls. Its Model Management table labels discovered entries as **ChatGPT · Auto**; editing one creates a minimal manual override, while **Reset** restores server-discovered defaults. In the advanced model form, the **ChatGPT Subscription OAuth** checkbox lets you create a custom subscription model. OAuth credentials never appear in the configuration webview or exported settings.
+
+Run **OAICopilot: Refresh ChatGPT Models** for an immediate catalog refresh, or **OAICopilot: Sign out of ChatGPT Subscription** to delete saved credentials and account-scoped model metadata. Authentication credentials are held in VS Code `SecretStorage`; model metadata is cached in VS Code global storage.
+
+**Limitations:** Only eligible Codex subscription models are supported. OpenAI's Codex model endpoint is not a documented stable public API. This integration currently uses the OAuth client ID found in KiloCode's source for compatibility testing; authorization for this extension is not guaranteed. Local browser authentication uses `localhost:1455` and may require port forwarding when VS Code's extension host runs remotely. A successful compile/unit test does not prove live account authentication or inference.

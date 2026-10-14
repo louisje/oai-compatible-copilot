@@ -104,6 +104,25 @@
 			</div>
 		</section>
 
+		<section id="chatgptSubscriptionSection">
+			<div class="section-header">
+				<h2>ChatGPT Subscription</h2>
+				<span id="chatgptStatus" class="subscription-status" role="status" aria-live="polite"
+					>Checking connection…</span
+				>
+			</div>
+			<p class="muted">
+				Sign in with your ChatGPT subscription to discover eligible Codex models automatically. No API key or manual
+				model configuration is required.
+			</p>
+			<div class="actions">
+				<button id="chatgptSignIn">Sign in to ChatGPT</button>
+				<button id="chatgptRefresh" class="secondary" disabled>Refresh Models</button>
+				<button id="chatgptSignOut" class="secondary" disabled>Sign out</button>
+			</div>
+			<div id="chatgptModelSummary" class="field-description" aria-live="polite"></div>
+		</section>
+
 		<section id="providerManagementSection">
 			<div class="section-header">
 				<h2>Provider Management</h2>
@@ -148,6 +167,7 @@
 							<th>Model ID</th>
 							<th>Enabled</th>
 							<th>Provider ID</th>
+							<th>Authentication</th>
 							<th>Display Name</th>
 							<th>Config ID</th>
 							<th>Context Length</th>
@@ -283,10 +303,17 @@
 						<div class="field">
 							<label for="modelPriceInput">Input Price ($/1M tokens)</label>
 							<div class="field-description">
-								Price in USD per 1,000,000 input (prompt) tokens. Used to estimate request cost locally when
-								the API does not report it.
+								Price in USD per 1,000,000 input (prompt) tokens. Used to estimate request cost locally when the API
+								does not report it.
 							</div>
-							<input id="modelPriceInput" type="number" class="model-input" min="0" step="0.01" placeholder="e.g., 3.00" />
+							<input
+								id="modelPriceInput"
+								type="number"
+								class="model-input"
+								min="0"
+								step="0.01"
+								placeholder="e.g., 3.00"
+							/>
 						</div>
 						<div class="field">
 							<label for="modelPriceOutput">Output Price ($/1M tokens)</label>
@@ -334,6 +361,13 @@
 						<button type="button" id="toggleAdvancedSettings" class="secondary">Show Advanced Settings</button>
 						<div id="advancedSettingsContent" style="display: none; margin-top: 15px">
 							<div class="row">
+								<div class="field">
+									<label for="modelChatGPTAuth">ChatGPT Subscription OAuth</label>
+									<div class="field-description">
+										Use your signed-in ChatGPT subscription instead of the provider's API key.
+									</div>
+									<input id="modelChatGPTAuth" type="checkbox" class="checkbox" />
+								</div>
 								<div class="field">
 									<label for="modelDisplayName">Display Name</label>
 									<div class="field-description">
@@ -418,12 +452,14 @@
 									</div>
 									<select id="modelReasoningEffort" class="model-input">
 										<option value=""></option>
+										<option value="ultra">Ultra</option>
 										<option value="max">Max</option>
 										<option value="xhigh">XHigh</option>
 										<option value="high">High</option>
 										<option value="medium">Medium</option>
 										<option value="low">Low</option>
 										<option value="minimal">Minimal</option>
+										<option value="none">None</option>
 									</select>
 								</div>
 							</div>

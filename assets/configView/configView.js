@@ -6,6 +6,9 @@ const state = {
 	retry: { enabled: true, max_attempts: 3, interval_ms: 1000, status_codes: [429, 500, 502, 503, 504] },
 	commitModel: "",
 	models: [],
+	manualModels: [],
+	discoveredModels: [],
+	chatgptConnected: false,
 	disabledProviders: [],
 	hiddenProviders: [],
 	providerKeys: {},
@@ -30,6 +33,12 @@ const providerTableBody = document.getElementById("providerTableBody");
 
 // Model management elements
 const modelTableBody = document.getElementById("modelTableBody");
+const chatgptStatus = document.getElementById("chatgptStatus");
+const chatgptSummary = document.getElementById("chatgptModelSummary");
+const chatgptSignInBtn = document.getElementById("chatgptSignIn");
+const chatgptSignOutBtn = document.getElementById("chatgptSignOut");
+const chatgptRefreshBtn = document.getElementById("chatgptRefresh");
+const modelChatGPTAuthInput = document.getElementById("modelChatGPTAuth");
 const modelFormSection = document.getElementById("modelFormSection");
 const modelFormTitle = document.getElementById("modelFormTitle");
 const modelIdInput = document.getElementById("modelIdInput");
@@ -116,6 +125,66 @@ const handleRefresh = () => {
 	}
 	vscode.postMessage({ type: "requestInit" });
 };
+
+// Subscription operations run in the extension host. OAuth tokens never enter the webview.
+function runChatGPTAction(type) {
+	chatgptStatus.textContent = type === "chatgptSignIn" ? "Waiting for browser authorization…" : "Updating…";
+	chatgptSignInBtn.disabled = true;
+	chatgptSignOutBtn.disabled = true;
+	chatgptRefreshBtn.disabled = true;
+	vscode.postMessage({ type });
+}
+
+chatgptSignInBtn.addEventListener("click", () => runChatGPTAction("chatgptSignIn"));
+chatgptSignOutBtn.addEventListener("click", () => runChatGPTAction("chatgptSignOut"));
+chatgptRefreshBtn.addEventListener("click", () => runChatGPTAction("chatgptRefresh"));
+
+function renderChatGPTStatus() {
+	const connected = state.chatgptConnected;
+	chatgptStatus.textContent = connected ? "Signed in" : "Not signed in";
+	chatgptStatus.classList.toggle("connected", connected);
+	chatgptSignInBtn.textContent = connected ? "Sign in with another account" : "Sign in to ChatGPT";
+	chatgptSignInBtn.disabled = false;
+	chatgptSignOutBtn.disabled = !connected;
+	chatgptRefreshBtn.disabled = !connected;
+	chatgptSummary.textContent = connected
+		? state.discoveredModels.length
+			? `${state.discoveredModels.length} models discovered. Model settings from Codex can be overridden individually below.`
+			: "Credentials are saved, but no models were discovered. Try Refresh Models or check the OAICopilot logs."
+		: "Sign in to discover subscription models. Other API key providers are unaffected.";
+}
+
+function escapeHtml(value) {
+	return String(value ?? "").replace(
+		/[&<>"']/g,
+		(character) =>
+			({
+				"&": "&amp;",
+				"<": "&lt;",
+				">": "&gt;",
+				'"': "&quot;",
+				"'": "&#39;",
+			})[character]
+	);
+}
+
+function modelKey(model) {
+	return model.id + (model.configId ? "::" + model.configId : "");
+}
+
+function isDiscoveredChatGPTModel(model) {
+	return (
+		model.chatgptAuth === true &&
+		model.configId === "chatgpt" &&
+		state.discoveredModels.some((entry) => entry.id === model.id)
+	);
+}
+
+function hasChatGPTOverride(model) {
+	return state.manualModels.some(
+		(entry) => entry.id === model.id && entry.chatgptAuth === true && (!entry.configId || entry.configId === "chatgpt")
+	);
+}
 
 // Export and Import buttons event listeners
 document.getElementById("exportConfig").addEventListener("click", () => {
@@ -208,6 +277,21 @@ document.getElementById("addModel").addEventListener("click", () => {
 // Provider dropdown change event listener for auto-fill
 modelProviderInput.addEventListener("change", () => {
 	const selectedProvider = modelProviderInput.value;
+	if (selectedProvider === "chatgpt") {
+		modelChatGPTAuthInput.checked = true;
+		modelApiModeInput.value = "openai-responses";
+		modelBaseUrlInput.value = "";
+		modelHeadersInput.value = "";
+		if (!modelIdInput.hasAttribute("data-editing")) {
+			modelConfigIdInput.value = "chatgpt";
+			modelContextLengthInput.value = "";
+			modelMaxTokensInput.value = "";
+			modelTemperatureInput.value = "";
+		}
+		populateModelIdDropdown(state.discoveredModels);
+		return;
+	}
+	modelChatGPTAuthInput.checked = false;
 	if (selectedProvider && state.providerInfo[selectedProvider]) {
 		// Auto-fill BaseURL and apiMode from provider info
 		modelBaseUrlInput.value = state.providerInfo[selectedProvider].baseUrl;
@@ -225,6 +309,19 @@ modelProviderInput.addEventListener("change", () => {
 			apiMode: state.providerInfo[selectedProvider].apiMode || modelApiModeInput.value || "openai",
 			headers,
 		});
+	}
+});
+
+modelChatGPTAuthInput.addEventListener("change", () => {
+	if (modelChatGPTAuthInput.checked) {
+		modelApiModeInput.value = "openai-responses";
+		modelBaseUrlInput.value = "";
+		if (!modelIdInput.hasAttribute("data-editing")) {
+			modelConfigIdInput.value ||= "chatgpt";
+			modelContextLengthInput.value = "";
+			modelMaxTokensInput.value = "";
+			modelTemperatureInput.value = "";
+		}
 	}
 });
 
@@ -289,6 +386,9 @@ window.addEventListener("message", (event) => {
 				retry,
 				commitModel,
 				models,
+				manualModels,
+				discoveredModels,
+				chatgptConnected,
 				disabledProviders,
 				hiddenProviders,
 				providerKeys,
@@ -305,6 +405,9 @@ window.addEventListener("message", (event) => {
 				status_codes: [],
 			};
 			state.models = models || [];
+			state.manualModels = manualModels || [];
+			state.discoveredModels = discoveredModels || [];
+			state.chatgptConnected = chatgptConnected === true;
 			state.disabledProviders = disabledProviders || [];
 			state.hiddenProviders = hiddenProviders || [];
 			state.commitModel = commitModel || "";
@@ -325,7 +428,8 @@ window.addEventListener("message", (event) => {
 			commitModelInput.value = state.commitModel || "";
 			commitLanguageInput.value = commitLanguage;
 
-			// Render provider and model management
+			// Render subscription, provider, and model management
+			renderChatGPTStatus();
 			renderProviders();
 			renderModels();
 			break;
@@ -363,21 +467,28 @@ function renderProviders() {
 	const pendingEdits = captureUnsavedProviderEdits();
 
 	// Get all unique providers
-	const providers = Array.from(new Set(state.models.map((m) => m.owned_by).filter(Boolean))).sort((a, b) =>
-		a.localeCompare(b)
-	);
+	const providers = Array.from(
+		new Set(
+			state.manualModels
+				.filter((m) => !m.chatgptAuth)
+				.map((m) => m.owned_by)
+				.filter(Boolean)
+		)
+	).sort((a, b) => a.localeCompare(b));
 
 	if (!providers.length) {
 		providerTableBody.innerHTML = '<tr><td colspan="8" class="no-data">No providers</td></tr>';
 		// Clear the provider dropdown as well
-		modelProviderInput.innerHTML = '<option value="">Select Provider</option>';
+		modelProviderInput.innerHTML =
+			'<option value="">Select Provider</option>' + '<option value="chatgpt">chatgpt (subscription)</option>';
+		state.providerInfo = {};
 		return;
 	}
 
 	const rows = providers
 		.map((provider) => {
 			// Get the provider's configuration information
-			const providerModels = state.models.filter((m) => m.owned_by === provider);
+			const providerModels = state.manualModels.filter((m) => m.owned_by === provider && !m.chatgptAuth);
 			const firstModel = providerModels[0];
 			const providerEnabled = !state.disabledProviders.some((item) => item.toLowerCase() === provider.toLowerCase());
 			const providerHidden = state.hiddenProviders.some((item) => item.toLowerCase() === provider.toLowerCase());
@@ -415,7 +526,7 @@ function renderProviders() {
 	const providerOptions = providers
 		.map((provider) => {
 			// Get the provider's configuration information
-			const providerModels = state.models.filter((m) => m.owned_by === provider);
+			const providerModels = state.manualModels.filter((m) => m.owned_by === provider && !m.chatgptAuth);
 			const firstModel = providerModels[0];
 
 			// Store provider info for auto-fill
@@ -429,7 +540,10 @@ function renderProviders() {
 			return `<option value="${provider}">${provider}</option>`;
 		})
 		.join("");
-	modelProviderInput.innerHTML = '<option value="">Select Provider</option>' + providerOptions;
+	modelProviderInput.innerHTML =
+		'<option value="">Select Provider</option>' +
+		'<option value="chatgpt">chatgpt (subscription)</option>' +
+		providerOptions;
 
 	// Restore any unsaved edits captured before this rebuild.
 	restoreUnsavedProviderEdits(pendingEdits);
@@ -585,30 +699,48 @@ function renderModels() {
 		)
 		.sort((a, b) => a.id.localeCompare(b.id));
 	if (!models.length) {
-		modelTableBody.innerHTML = '<tr><td colspan="13" class="no-data">No models</td></tr>';
+		modelTableBody.innerHTML = '<tr><td colspan="14" class="no-data">No models</td></tr>';
 		return;
 	}
 
 	const rows = models
 		.map((model) => {
-			const providerDisabled = state.disabledProviders.some((item) => item.toLowerCase() === (model.owned_by || "").toLowerCase());
+			const providerDisabled = state.disabledProviders.some(
+				(item) => item.toLowerCase() === (model.owned_by || "").toLowerCase()
+			);
+			const key = escapeHtml(modelKey(model));
+			const auto = isDiscoveredChatGPTModel(model);
+			const hasOverride = auto && hasChatGPTOverride(model);
+			const authLabel = model.chatgptAuth
+				? auto
+					? hasOverride
+						? "ChatGPT · Override"
+						: "ChatGPT · Auto"
+					: "ChatGPT · Manual"
+				: "API Key";
+			const action = auto
+				? hasOverride
+					? `<button class="reset-chatgpt-model-btn secondary" data-model-id="${key}" title="Remove the override and restore Codex defaults">Reset</button>`
+					: ""
+				: `<button class="delete-model-btn danger" data-model-id="${key}" title="Delete">🗑️</button>`;
 			return `
-			<tr data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}"${providerDisabled ? ' class="model-provider-disabled"' : ""}>
-				<td>${model.id}</td>
-				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" ${model.enabled !== false ? "checked" : ""} /></td>
-				<td>${model.owned_by}</td>
-				<td>${model.displayName || ""}</td>
-				<td>${model.configId || ""}</td>
-				<td>${model.context_length || ""}</td>
-				<td>${model.max_tokens || model.max_completion_tokens || ""}</td>
+			<tr data-model-id="${key}"${providerDisabled ? ' class="model-provider-disabled"' : ""}>
+				<td>${escapeHtml(model.id)}</td>
+				<td><input type="checkbox" class="model-enabled-toggle" data-model-id="${key}" ${model.enabled !== false ? "checked" : ""} /></td>
+				<td>${escapeHtml(model.owned_by)}</td>
+				<td><span class="auth-label">${escapeHtml(authLabel)}</span></td>
+				<td>${escapeHtml(model.displayName)}</td>
+				<td>${escapeHtml(model.configId)}</td>
+				<td>${escapeHtml(model.context_length)}</td>
+				<td>${escapeHtml(model.max_completion_tokens ?? model.max_tokens ?? model.catalog_max_output_tokens ?? "")}</td>
 				<td>${model.vision ? "True" : ""}</td>
-				<td>${model.temperature !== undefined && model.temperature !== null ? model.temperature : ""}</td>
-				<td>${model.top_p !== undefined && model.top_p !== null ? model.top_p : ""}</td>
-				<td>${model.delay || ""}</td>
-				<td>${model.pricing ? `$${model.pricing.input} / $${model.pricing.output}` : ""}</td>
+				<td>${escapeHtml(model.temperature !== undefined && model.temperature !== null ? model.temperature : "")}</td>
+				<td>${escapeHtml(model.top_p !== undefined && model.top_p !== null ? model.top_p : "")}</td>
+				<td>${escapeHtml(model.delay || "")}</td>
+				<td>${model.pricing ? `$${escapeHtml(model.pricing.input)} / $${escapeHtml(model.pricing.output)}` : ""}</td>
 				<td class="action-buttons">
-					<button class="update-model-btn" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}">Edit</button>
-					<button class="delete-model-btn danger" data-model-id="${model.id}${model.configId ? "::" + model.configId : ""}" title="Delete">🗑️</button>
+					<button class="update-model-btn" data-model-id="${key}">Edit</button>
+					${action}
 				</td>
 			</tr>`;
 		})
@@ -631,6 +763,27 @@ function renderModels() {
 		});
 	});
 
+	// Auto-discovered entries cannot be deleted: reset their manual override instead.
+	modelTableBody.querySelectorAll(".reset-chatgpt-model-btn").forEach((btn) => {
+		btn.addEventListener("click", (event) => {
+			const modelId = event.currentTarget.getAttribute("data-model-id");
+			const model = findModel(modelId);
+			if (!model || !isDiscoveredChatGPTModel(model)) {
+				return;
+			}
+			const confirmId = "resetChatGPT_" + Date.now();
+			pendingConfirmations.set(confirmId, {
+				action: () => vscode.postMessage({ type: "resetChatGPTOverride", modelId: model.id }),
+			});
+			vscode.postMessage({
+				type: "requestConfirm",
+				id: confirmId,
+				message: `Remove manual settings for ${model.id} and restore the discovered Codex defaults?`,
+				action: "resetChatGPTOverride",
+			});
+		});
+	});
+
 	// Add event listeners for model rows
 	document.querySelectorAll(".update-model-btn").forEach((btn) => {
 		btn.addEventListener("click", (event) => {
@@ -650,7 +803,9 @@ function renderModels() {
 			if (model) {
 				// Show the model form in edit mode
 				modelFormSection.style.display = "block";
-				modelFormTitle.textContent = `Edit Model: ${modelId}`;
+				modelFormTitle.textContent = isDiscoveredChatGPTModel(model)
+					? `Override ChatGPT Model: ${modelId}`
+					: `Edit Model: ${modelId}`;
 				populateModelForm(model);
 			}
 		});
@@ -701,6 +856,8 @@ function resetModelForm() {
 	modelMaxTokensInput.value = 4096;
 	modelVisionInput.value = "";
 	modelApiModeInput.value = "openai";
+	modelChatGPTAuthInput.checked = false;
+	modelChatGPTAuthInput.disabled = false;
 	modelTemperatureInput.value = 0;
 	modelTopPInput.value = "";
 	modelDelayInput.value = "";
@@ -713,6 +870,11 @@ function resetModelForm() {
 	modelFrequencyPenaltyInput.value = "";
 	modelPresencePenaltyInput.value = "";
 	modelRepetitionPenaltyInput.value = "";
+	modelReasoningEffortInput.replaceChildren(
+		...["", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map(
+			(effort) => new Option(effort || "Default", effort)
+		)
+	);
 	modelReasoningEffortInput.value = "";
 	modelEnableThinkingInput.value = "";
 	modelThinkingBudgetInput.value = "";
@@ -734,6 +896,8 @@ function resetModelForm() {
 	// disbale fields when form is reset
 	modelBaseUrlInput.disabled = true;
 	modelApiModeInput.disabled = true;
+	modelProviderInput.disabled = false;
+	modelConfigIdInput.disabled = false;
 	// Clear dropdown options
 	dropdownContent.innerHTML = "";
 }
@@ -744,7 +908,7 @@ function collectModelFormData() {
 
 	return {
 		id: modelIdInput.value.trim(),
-		owned_by: modelProviderInput.value.trim(),
+		owned_by: modelChatGPTAuthInput.checked ? "chatgpt" : modelProviderInput.value.trim(),
 		enabled: modelEnabledInput.checked,
 		displayName: modelDisplayNameInput.value.trim() || undefined,
 		configId: modelConfigIdInput.value.trim() || undefined,
@@ -753,7 +917,8 @@ function collectModelFormData() {
 		context_length: modelContextLengthInput.value ? parseInt(modelContextLengthInput.value) : undefined,
 		max_tokens: modelMaxTokensInput.value ? parseInt(modelMaxTokensInput.value) : undefined,
 		vision: modelVisionInput.value ? modelVisionInput.value === "true" : undefined,
-		apiMode: modelApiModeInput.value || undefined,
+		apiMode: modelChatGPTAuthInput.checked ? "openai-responses" : modelApiModeInput.value || undefined,
+		chatgptAuth: modelChatGPTAuthInput.checked || undefined,
 		temperature: modelTemperatureInput.value !== "" ? parseFloat(modelTemperatureInput.value) : undefined,
 		top_p: modelTopPInput.value !== "" ? parseFloat(modelTopPInput.value) : undefined,
 		delay: modelDelayInput.value ? parseInt(modelDelayInput.value) : undefined,
@@ -1026,7 +1191,14 @@ function populateCommitModelDropdown() {
 			const providerEnabled = !state.disabledProviders.some(
 				(provider) => provider.toLowerCase() === model.owned_by.toLowerCase()
 			);
-			return apiMode !== "gemini" && model.enabled !== false && providerEnabled && !model.id.startsWith("__provider__");
+			// Commit generation still uses API-key based providers; it has no subscription OAuth transport.
+			return (
+				!model.chatgptAuth &&
+				apiMode !== "gemini" &&
+				model.enabled !== false &&
+				providerEnabled &&
+				!model.id.startsWith("__provider__")
+			);
 		})
 		.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -1087,14 +1259,18 @@ function populateModelForm(model) {
 	const fetchApiKey = state.providerKeys[currentProvider] || state.apiKey;
 	const fetchApiMode = providerInfo?.apiMode || model.apiMode || modelApiModeInput.value || "openai";
 
-	// Request to fetch remote models for the selected provider
-	vscode.postMessage({
-		type: "fetchModels",
-		baseUrl: fetchBaseUrl,
-		apiKey: fetchApiKey,
-		apiMode: fetchApiMode,
-		headers: model.headers,
-	});
+	// Subscription model metadata is already available; never fetch it via a generic API key.
+	if (model.chatgptAuth) {
+		populateModelIdDropdown(state.discoveredModels);
+	} else {
+		vscode.postMessage({
+			type: "fetchModels",
+			baseUrl: fetchBaseUrl,
+			apiKey: fetchApiKey,
+			apiMode: fetchApiMode,
+			headers: model.headers,
+		});
+	}
 
 	modelProviderInput.value = currentProvider;
 	modelEnabledInput.checked = model.enabled !== false;
@@ -1109,7 +1285,11 @@ function populateModelForm(model) {
 	modelPriceCacheReadInput.value = model.pricing?.cache_read !== undefined ? model.pricing.cache_read : "";
 	modelPriceCacheWriteInput.value = model.pricing?.cache_write !== undefined ? model.pricing.cache_write : "";
 	modelVisionInput.value = model.vision !== undefined ? String(model.vision) : "";
-	modelApiModeInput.value = model.apiMode || "openai";
+	modelApiModeInput.value = model.apiMode || (model.chatgptAuth ? "openai-responses" : "openai");
+	modelChatGPTAuthInput.checked = model.chatgptAuth === true;
+	modelChatGPTAuthInput.disabled = isDiscoveredChatGPTModel(model);
+	modelProviderInput.disabled = isDiscoveredChatGPTModel(model);
+	modelConfigIdInput.disabled = isDiscoveredChatGPTModel(model);
 	modelTemperatureInput.value = model.temperature !== undefined && model.temperature !== null ? model.temperature : "";
 	modelTopPInput.value = model.top_p !== undefined && model.top_p !== null ? model.top_p : "";
 	modelDelayInput.value = model.delay || "";
@@ -1118,6 +1298,14 @@ function populateModelForm(model) {
 	modelFrequencyPenaltyInput.value = model.frequency_penalty || "";
 	modelPresencePenaltyInput.value = model.presence_penalty || "";
 	modelRepetitionPenaltyInput.value = model.repetition_penalty || "";
+	if (model.chatgptAuth && model.reasoning_efforts?.length) {
+		modelReasoningEffortInput.replaceChildren(new Option("Default", ""));
+		for (const level of model.reasoning_efforts) {
+			modelReasoningEffortInput.add(
+				new Option(level.effort + (level.description ? " — " + level.description : ""), level.effort)
+			);
+		}
+	}
 	modelReasoningEffortInput.value = model.reasoning_effort || "";
 	modelEnableThinkingInput.value = model.enable_thinking !== undefined ? String(model.enable_thinking) : "";
 	modelThinkingBudgetInput.value = model.thinking_budget || "";

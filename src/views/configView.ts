@@ -3,6 +3,8 @@ import type { HFApiMode, HFModelItem } from "../types";
 import { normalizeUserModels, parseModelId } from "../utils";
 import { fetchModels } from "../provideModel";
 import { VersionManager } from "../versionManager";
+import { ChatGPTModelCatalog } from "../chatgpt/catalog";
+import { buildChatGPTOverride, mergeChatGPTModels } from "../chatgpt/models";
 
 interface InitPayload {
 	baseUrl: string;
@@ -18,6 +20,9 @@ interface InitPayload {
 	commitModel: string;
 	commitLanguage: string;
 	models: HFModelItem[];
+	manualModels: HFModelItem[];
+	discoveredModels: HFModelItem[];
+	chatgptConnected: boolean;
 	disabledProviders: string[];
 	hiddenProviders: string[];
 	providerKeys: Record<string, string>;
@@ -46,6 +51,8 @@ interface ExportConfig {
 
 type IncomingMessage =
 	| { type: "requestInit" }
+	| { type: "chatgptSignIn" | "chatgptSignOut" | "chatgptRefresh" }
+	| { type: "resetChatGPTOverride"; modelId: string }
 	| {
 			type: "saveGlobalConfig";
 			baseUrl: string;
@@ -102,9 +109,14 @@ export class ConfigViewPanel {
 	private readonly panel: vscode.WebviewPanel;
 	private readonly extensionUri: vscode.Uri;
 	private readonly secrets: vscode.SecretStorage;
+	private readonly chatgptCatalog: ChatGPTModelCatalog;
 	private disposables: vscode.Disposable[] = [];
 
-	public static openPanel(extensionUri: vscode.Uri, secrets: vscode.SecretStorage) {
+	public static openPanel(
+		extensionUri: vscode.Uri,
+		secrets: vscode.SecretStorage,
+		chatgptCatalog: ChatGPTModelCatalog
+	) {
 		const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
 
 		if (ConfigViewPanel.currentPanel) {
@@ -123,13 +135,19 @@ export class ConfigViewPanel {
 			}
 		);
 
-		ConfigViewPanel.currentPanel = new ConfigViewPanel(panel, extensionUri, secrets);
+		ConfigViewPanel.currentPanel = new ConfigViewPanel(panel, extensionUri, secrets, chatgptCatalog);
 	}
 
-	private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, secrets: vscode.SecretStorage) {
+	private constructor(
+		panel: vscode.WebviewPanel,
+		extensionUri: vscode.Uri,
+		secrets: vscode.SecretStorage,
+		chatgptCatalog: ChatGPTModelCatalog
+	) {
 		this.panel = panel;
 		this.extensionUri = extensionUri;
 		this.secrets = secrets;
+		this.chatgptCatalog = chatgptCatalog;
 
 		this.update();
 
@@ -172,10 +190,38 @@ export class ConfigViewPanel {
 		}
 	}
 
+	public async refresh(): Promise<void> {
+		await this.sendInit();
+	}
+
 	async handleMessage(message: IncomingMessage) {
 		switch (message.type) {
 			case "requestInit":
 				await this.sendInit();
+				break;
+			case "chatgptSignIn":
+				try {
+					await vscode.commands.executeCommand("oaicopilot.chatgptLogin");
+				} finally {
+					await this.sendInit();
+				}
+				break;
+			case "chatgptSignOut":
+				try {
+					await vscode.commands.executeCommand("oaicopilot.chatgptLogout");
+				} finally {
+					await this.sendInit();
+				}
+				break;
+			case "chatgptRefresh":
+				try {
+					await vscode.commands.executeCommand("oaicopilot.chatgptRefreshModels");
+				} finally {
+					await this.sendInit();
+				}
+				break;
+			case "resetChatGPTOverride":
+				await this.resetChatGPTOverride(message.modelId);
 				break;
 			case "saveGlobalConfig":
 				await this.saveGlobalConfig(
@@ -270,7 +316,10 @@ export class ConfigViewPanel {
 	private async sendInit() {
 		const config = vscode.workspace.getConfiguration();
 		const baseUrl = config.get<string>("oaicopilot.baseUrl", "https://api.openai.com/v1");
-		const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const manualModels = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const chatgptConnected = await this.chatgptCatalog.isConnected();
+		const discoveredModels = chatgptConnected ? await this.chatgptCatalog.list() : [];
+		const models = mergeChatGPTModels(manualModels, discoveredModels);
 		const disabledProviders = config.get<string[]>("oaicopilot.disabledProviders", []);
 		const hiddenProviders = config.get<string[]>("oaicopilot.hiddenProviders", []);
 
@@ -319,6 +368,9 @@ export class ConfigViewPanel {
 			commitModel,
 			commitLanguage,
 			models,
+			manualModels,
+			discoveredModels,
+			chatgptConnected,
 			disabledProviders,
 			hiddenProviders,
 			providerKeys,
@@ -589,7 +641,49 @@ export class ConfigViewPanel {
 		await config.update("oaicopilot.disabledProviders", updatedProviders, vscode.ConfigurationTarget.Global);
 	}
 
+	private async resetChatGPTOverride(modelId: string) {
+		const models = await this.chatgptCatalog.list();
+		if (!models.some((model) => model.id === modelId)) {
+			throw new Error("This is not an auto-discovered ChatGPT model.");
+		}
+		const config = vscode.workspace.getConfiguration();
+		const manual = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const filtered = manual.filter(
+			(model) =>
+				!(model.id === modelId && model.chatgptAuth === true && (!model.configId || model.configId === "chatgpt"))
+		);
+		await config.update("oaicopilot.models", filtered, vscode.ConfigurationTarget.Global);
+		await this.sendInit();
+	}
+
+	private async saveChatGPTOverride(model: HFModelItem) {
+		const discovered = (await this.chatgptCatalog.list()).find((item) => item.id === model.id);
+		if (!discovered) {
+			throw new Error("ChatGPT model is not in the discovered catalog.");
+		}
+		const override = buildChatGPTOverride(model, discovered);
+		const config = vscode.workspace.getConfiguration();
+		const manual = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+		const withoutPrevious = manual.filter(
+			(item) => !(item.id === model.id && item.chatgptAuth === true && (!item.configId || item.configId === "chatgpt"))
+		);
+		if (override) {
+			withoutPrevious.push(override);
+		}
+		await config.update("oaicopilot.models", withoutPrevious, vscode.ConfigurationTarget.Global);
+		await this.sendInit();
+	}
+
 	private async addModel(model: HFModelItem) {
+		if (model.chatgptAuth) {
+			const discovered = (await this.chatgptCatalog.list()).some((item) => item.id === model.id);
+			if (discovered && (!model.configId || model.configId === "chatgpt")) {
+				await this.saveChatGPTOverride(model);
+				return;
+			}
+			model.apiMode = "openai-responses";
+			model.configId ??= "chatgpt";
+		}
 		const config = vscode.workspace.getConfiguration();
 		const models = config.get<HFModelItem[]>("oaicopilot.models", []);
 
@@ -615,6 +709,27 @@ export class ConfigViewPanel {
 	private async updateModel(model: HFModelItem, originalModelId?: string, originalConfigId?: string) {
 		const config = vscode.workspace.getConfiguration();
 		const models = config.get<HFModelItem[]>("oaicopilot.models", []);
+		const prior = models.find(
+			(item) => item.id === originalModelId && (originalConfigId ? item.configId === originalConfigId : !item.configId)
+		);
+		// Only treat an edit as an auto-discovered override when it came from an
+		// auto-discovered row or a previous subscription override. Converting a
+		// different API-key model must update that model instead of duplicating it.
+		if (
+			model.chatgptAuth &&
+			model.id === originalModelId &&
+			(originalConfigId === "chatgpt" || prior?.chatgptAuth === true) &&
+			(!originalConfigId || originalConfigId === "chatgpt") &&
+			(await this.chatgptCatalog.list()).some((item) => item.id === model.id)
+		) {
+			await this.saveChatGPTOverride(model);
+			return;
+		}
+		if (model.chatgptAuth) {
+			model.apiMode = "openai-responses";
+			model.baseUrl = undefined;
+			model.headers = undefined;
+		}
 
 		// Find the model to update based on original id and configId
 		const updatedModels = models.map((m) => {

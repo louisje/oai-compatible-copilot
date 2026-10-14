@@ -88,6 +88,21 @@
 				"command": "oaicopilot.showLogs",
 				"category": "OAICopilot",
 				"title": "Show Logs"
+			},
+			{
+				"command": "oaicopilot.chatgptLogin",
+				"category": "OAICopilot",
+				"title": "Sign in to ChatGPT Subscription"
+			},
+			{
+				"command": "oaicopilot.chatgptLogout",
+				"category": "OAICopilot",
+				"title": "Sign out of ChatGPT Subscription"
+			},
+			{
+				"command": "oaicopilot.chatgptRefreshModels",
+				"category": "OAICopilot",
+				"title": "Refresh ChatGPT Models"
 			}
 		],
 		"menus": {

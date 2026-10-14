@@ -56,6 +56,15 @@ suite("modelConfiguration", () => {
 		assert.strictEqual(createReasoningEffortConfigurationSchema("high").properties.reasoningEffort.default, "high");
 	});
 
+	test("builds account-specific reasoning choices, including ultra", () => {
+		const schema = createReasoningEffortConfigurationSchema("low", [
+			{ effort: "low", description: "Fast" },
+			{ effort: "ultra", description: "Deep reasoning" },
+		]);
+		assert.deepStrictEqual(schema.properties.reasoningEffort.enum, ["low", "ultra"]);
+		assert.deepStrictEqual(schema.properties.reasoningEffort.enumDescriptions, ["Fast", "Deep reasoning"]);
+		assert.strictEqual(schema.properties.reasoningEffort.default, "low");
+	});
 	test("reads the selected reasoning effort from VS Code model configuration", () => {
 		assert.strictEqual(getConfiguredReasoningEffort(undefined), "medium");
 		assert.strictEqual(getConfiguredReasoningEffort(undefined, "low"), "low");

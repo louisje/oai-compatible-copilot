@@ -393,3 +393,21 @@ button:not(.secondary):not(.danger) {
 tr.model-provider-disabled {
 	opacity: 0.5;
 }
+
+.subscription-status {
+	border: 1px solid var(--vscode-editorWidget-border);
+	border-radius: 14px;
+	padding: 4px 10px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+.subscription-status.connected {
+	color: var(--vscode-testing-iconPassed, var(--vscode-foreground));
+}
+#chatgptModelSummary {
+	margin-top: 10px;
+}
+.auth-label {
+	white-space: nowrap;
+	font-size: 12px;
+}

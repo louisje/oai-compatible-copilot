@@ -1,15 +1,13 @@
 import type * as vscode from "vscode";
 import type { HFModelItem } from "./types";
 
-export type ReasoningEffortPickerValue = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ReasoningEffortPickerValue = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
+const DEFAULT_REASONING_EFFORT_VALUES = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const REASONING_EFFORT_VALUES: readonly ReasoningEffortPickerValue[] = [
-	"minimal",
-	"low",
-	"medium",
-	"high",
-	"xhigh",
-	"max",
+	...DEFAULT_REASONING_EFFORT_VALUES,
+	"none",
+	"ultra",
 ];
 
 export const REASONING_EFFORT_CONFIGURATION_SCHEMA = {
@@ -17,7 +15,7 @@ export const REASONING_EFFORT_CONFIGURATION_SCHEMA = {
 		reasoningEffort: {
 			type: "string",
 			title: "Reasoning Effort",
-			enum: REASONING_EFFORT_VALUES,
+			enum: DEFAULT_REASONING_EFFORT_VALUES,
 			enumItemLabels: ["Minimal", "Low", "Medium", "High", "XHigh", "Max"],
 			enumDescriptions: [
 				"Smallest reasoning budget",
@@ -33,14 +31,26 @@ export const REASONING_EFFORT_CONFIGURATION_SCHEMA = {
 	},
 } as const;
 
-export function createReasoningEffortConfigurationSchema(defaultValue: ReasoningEffortPickerValue) {
+export function createReasoningEffortConfigurationSchema(
+	defaultValue: ReasoningEffortPickerValue,
+	levels?: readonly { effort: string; description?: string }[]
+) {
+	const source = REASONING_EFFORT_CONFIGURATION_SCHEMA.properties.reasoningEffort;
+	const validLevels = levels?.filter((level) => isReasoningEffortValue(level.effort));
+	const choices = validLevels?.length
+		? [...new Map(validLevels.map((level) => [level.effort, level])).values()]
+		: source.enum.map((effort, index) => ({
+				effort,
+				description: source.enumDescriptions[index],
+			}));
 	return {
 		properties: {
 			reasoningEffort: {
-				...REASONING_EFFORT_CONFIGURATION_SCHEMA.properties.reasoningEffort,
-				enumItemLabels: [...REASONING_EFFORT_CONFIGURATION_SCHEMA.properties.reasoningEffort.enumItemLabels],
-				enumDescriptions: [...REASONING_EFFORT_CONFIGURATION_SCHEMA.properties.reasoningEffort.enumDescriptions],
-				default: defaultValue,
+				...source,
+				enum: choices.map((choice) => choice.effort),
+				enumItemLabels: choices.map((choice) => choice.effort.charAt(0).toUpperCase() + choice.effort.slice(1)),
+				enumDescriptions: choices.map((choice) => choice.description || ""),
+				default: choices.some((choice) => choice.effort === defaultValue) ? defaultValue : choices[0].effort,
 			},
 		},
 	};
