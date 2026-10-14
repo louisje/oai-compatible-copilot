@@ -210,6 +210,40 @@ table {
 	border-collapse: collapse;
 }
 
+/* Keep the wide model matrix scrollable instead of letting its 14 columns
+ * fight over the viewport width. The ID is allowed to wrap; the human-readable
+ * display name gets more room than the machine-readable identifier.
+ * This is deliberately scoped to Model Management (not Provider Management). */
+#modelTable {
+	table-layout: fixed;
+	min-width: 1500px;
+}
+
+#modelTable th:nth-child(1) {
+	width: 190px;
+}
+
+#modelTable th:nth-child(4) {
+	width: 100px;
+}
+
+#modelTable th:nth-child(5) {
+	width: 210px;
+}
+
+#modelTable th:nth-child(13) {
+	width: 125px;
+}
+
+#modelTable th:nth-child(14) {
+	width: 130px;
+}
+
+#modelTable td:nth-child(1),
+#modelTable td:nth-child(5) {
+	overflow-wrap: anywhere;
+}
+
 th,
 td {
 	padding: 8px 12px;
